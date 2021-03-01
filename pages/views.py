@@ -1,6 +1,6 @@
 import sys
 
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import HttpResponse, HttpResponseRedirect, Http404
 from django.utils.http import urlsafe_base64_decode
 
@@ -23,6 +23,7 @@ FORMS = [('SelectReportType', SelectReportType),
          ('CustomizeLineGraph', CustomizeLineGraph),
          ('CustomizeScatterPlot', CustomizeScatterPlot),
          ('PieChartDetails', PieChartDetails),
+         ('HistogramHours', HistogramHours),
          ('HistogramDetails', HistogramDetails),
          ('IndividualStatisticDetails', IndividualStatisticDetails),
          ('AttendanceDataForm', AttendanceDataForm),
@@ -36,28 +37,42 @@ FORMS = [('SelectReportType', SelectReportType),
 # Temporarily store wizard choices if the user wants to save a "preset"
 preset_storage = {}
 
-def landingPageView(request):
-    return render(request, 'pages/landingPage.html')
+# def landingPageView(request):
+#     return render(request, 'pages/landingPage.html')
 
 def surveyPageView(request):
     return render(request, 'pages/survey.html')
 
 def homePageView(request):
-    return render(request, 'pages/homePage.html')
+    if request.user.is_authenticated:
+        return render(request, 'pages/homePage.html')
+    else: 
+        return redirect('login')
 
 
 def importPageView(request):
-    if request.method == 'POST':
-        return HttpResponseRedirect('/parse')
-    return render(request, 'pages/importPage.html')
+    # if request.method == 'POST': #This if statement is not needed, the import page will never have a load condition with a 'POST' method. Leaving for reference reasons
+    #     return HttpResponseRedirect('/parse')
+    # return render(request, 'pages/importPage.html')
+
+    if request.user.is_authenticated:
+        return render(request, 'pages/importPage.html')
+    else: 
+        return redirect('login')
 
 
 def vmcAdminPageView(request):
-    return render(request, "pages/vmcAdminPage.html")
+    if request.user.is_authenticated:
+        return render(request, "pages/vmcAdminPage.html")
+    else: 
+        return redirect('login')
 
 
 def visPageView(request):
-    return render(request, 'pages/visualizationsPage.html')
+    if request.user.is_authenticated:
+        return render(request, 'pages/visualizationsPage.html')
+    else: 
+        return redirect('login')
 
 
 def changePassView(request, emailAddress):
@@ -147,13 +162,11 @@ def viewAccountsList(request):
 
 def accessAccounts():
     users = CustomUser.objects.all()
-
     return users
 
 
 def accessIndividualAccount(emailAddress):
     user = CustomUser.objects.get(pk=emailAddress)
-
     return user
 
 
@@ -167,14 +180,19 @@ def flatten(sqlList):
 
 
 def accountsView(request):
-    accountsList = accessAccounts()
-    emails = []
 
-    for user in accountsList:
-        emails.append(user.email)
-    print('made it here')
 
-    return render(request, 'pages/viewAccountsList.html', {'emails': emails})
+    if request.user.is_authenticated:
+        accountsList = accessAccounts()
+        emails = []
+    
+        for user in accountsList:
+            emails.append(user.email)
+        print('made it here')
+    
+        return render(request, 'pages/viewAccountsList.html', {'emails': emails})
+    else: 
+        return redirect('login')
 
 
 def otherAccountOptions(request, emailAddress):
@@ -312,7 +330,7 @@ def pieChartWizard(wizard):
 
 # Branch to scatter plot wizard if user selects 'Scatter Plot' on first page
 def scatterPlotWizard(wizard):
-    return conditionalWizardBranch(wizard, 'Scatter Plot')
+    return conditionalWizardBranch(wizard, 'Line and/or Scatter')
 
 
 # Branch to individual statistic wizard if user selects 'Individual Statistic'
@@ -329,6 +347,14 @@ def conditionalWizardBranch(wizard, graphType):
     cleaned_data = wizard.get_cleaned_data_for_step('SelectReportType') or {}
     # If the user's selection matches the graph type, return True
     if cleaned_data.get('graphType') == graphType:
+        return True
+    else:
+        return False
+
+def clockWizard(wizard):
+    cleaned_data = wizard.get_cleaned_data_for_step('HistogramAxes') or {}
+
+    if cleaned_data.get('time_units') == 'Average visitors by time':
         return True
     else:
         return False
@@ -356,7 +382,8 @@ class ReportWizardBase(SessionWizardView):
                  'ConfirmLineGraph': 'pages/WizardFiles/confirmLineGraph.html',
                  'ConfirmPieChart': 'pages/WizardFiles/confirmPieChart.html',
                  'ConfirmScatterPlot': 'pages/WizardFiles/confirmScatterPlot.html',
-                 'ConfirmIndividualStatistic': 'pages/WizardFiles/confirmIndividualStatistic.html'}
+                 'ConfirmIndividualStatistic': 'pages/WizardFiles/confirmIndividualStatistic.html',
+                 'HistogramHours': 'pages/WizardFiles/customizeBarGraph.html'}
 
     def get_context_data(self, form, **kwargs):
         context = super(ReportWizardBase, self).get_context_data(form=form, **kwargs)
@@ -368,6 +395,7 @@ class ReportWizardBase(SessionWizardView):
                       'CustomizeLineGraph': lineGraphWizard, 'ScatterPlotAxes': scatterPlotWizard,
                       'HistogramAxes': histogramWizard, 'ConfirmBarGraph': barGraphWizard,
                       'HistogramDetails': histogramWizard, 'ConfirmHistogram': histogramWizard,
+                      'HistogramHours' : clockWizard,
                       'ConfirmPieChart': pieChartWizard, 'IndividualStatisticDetails': individualStatisticWizard,
                       'LineGraphAxes': lineGraphWizard, 'PieChartData': pieChartWizard,
                       'PieChartDetails': pieChartWizard, 'ConfirmLineGraph': lineGraphWizard,
@@ -512,7 +540,11 @@ def saveChoices(request, name):
 
 
 def reportsView(request):
-    return render(request, 'pages/reportsPage.html')
+    if request.user.is_authenticated:
+        return render(request, 'pages/reportsPage.html')
+    else: 
+        return redirect('login')
+    
 
 def viewPresets(request):
     presets = ReportPresets.objects.filter(user=request.user)
