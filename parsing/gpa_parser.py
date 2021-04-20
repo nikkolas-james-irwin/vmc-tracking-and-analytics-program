@@ -44,6 +44,8 @@ def parse_gpa(csvfile):
     data = []
     for row in reader:
         data.append(row)
+    if data[0][0] != 'Report Name: Count Students in End Term':
+        return ["ERROR","Invalid header in GPA File"]
     data,term = remove_header(data)
     columns = data[0]
     data = data [1:]

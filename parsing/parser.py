@@ -62,6 +62,8 @@ def parse_report(csvfile):
     formatted = []
     tags = []
     staff = []
+    if data[0][1] != "Check-Ins":
+        return "ERROR", "Invalid header in navigate file."
     titles = data[sublist_finder(data, 'Student Name')]
 
     data = data[(sublist_finder(data, 'Student Name') + 1):]
