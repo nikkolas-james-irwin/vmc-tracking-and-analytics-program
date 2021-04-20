@@ -19,20 +19,20 @@ class Data:
     check_in_time = ''
     check_out_date = ''
     check_out_time = ''
-    duration = ''
+    check_in_duration = ''
     staff_name = ''
     staff_id = ''
     staff_email = ''
 
     def get_insert_statement(self):
-        insert_val_list = [self.student_name, self.student_email, self.student_id, self.services, self.location,
+        insert_val_names = ['student_name','student_email','student_id','services','location','check_in_date', 'check_in_time', 'check_out_date', 'check_out_time', 'check_in_duration', 'staff_name', 
+'staff_email', 'staff_id']
+        insert_val_list = [self.student_name, self.student_email, self.student_id, self.services, self.location.replace('_',' '),
         datetime.strptime(self.check_in_date, '%m/%d/%y').strftime('%Y-%m-%d'), self.check_in_time,
-        datetime.strptime(self.check_out_date, '%m/%d/%y').strftime('%Y-%m-%d'), self.check_out_time, self.duration, self.staff_name, self.staff_email, self.staff_id]
-        input_val_string = ''
-        for i in insert_val_list:
-            input_val_string = input_val_string + '\'' + i + '\','
-        input_val_string = input_val_string[:-1]
-        return 'insert into visits values (' + input_val_string + ');'
+        datetime.strptime(self.check_out_date, '%m/%d/%y').strftime('%Y-%m-%d'), self.check_out_time, self.check_in_duration, self.staff_name, self.staff_email, self.staff_id];
+        insert_val_list = ['\"' + str(a) + '\"' for a in insert_val_list];
+
+        return 'INSERT INTO visits (' + ', '.join(insert_val_names) + ') VALUES (' + ', '.join(insert_val_list) + ');'
 
 
 class Tag:
@@ -48,13 +48,23 @@ def raw_data(csvfile):
         data.append(row)
     return data
 
+def sublist_finder(data, name):
+    for nested_list in data:
+        if name in nested_list:
+            return data.index(nested_list)
+
+    # Not found (should not reach this point)
+    return -1
+
+
 def parse_report(csvfile):
     data = raw_data(csvfile)
     formatted = []
     tags = []
     staff = []
-    titles = data[2]
-    data = data[3:]
+    titles = data[sublist_finder(data, 'Student Name')]
+
+    data = data[(sublist_finder(data, 'Student Name') + 1):]
     for point in data:
         if point:
             formatted.append(format_data(titles, point))
@@ -87,7 +97,7 @@ def format_data(titles, raw):
     data.check_in_time = raw[titles.index('Check In Time')]
     data.check_out_date = raw[titles.index('Check Out Date')]
     data.check_out_time = raw[titles.index('Check Out Time')]
-    data.duration = raw[titles.index('Checked In Duration (In Min)')]
+    data.check_in_duration = raw[titles.index('Checked In Duration (In Min)')]
     data.staff_name = raw[titles.index('Staff Name')]
     data.staff_id = raw[titles.index('Staff ID')]
     data.staff_email = raw[titles.index('Staff E-mail')]
