@@ -1,14 +1,22 @@
-import csv
-from datetime import datetime
-from enum import Enum
+#OBSOLETE
+#THE SCANNER FILE IS NO LONGER COLLECTED OR UPLOADED BY THE VMC
+#JH
 
+import csv #csv reading and writing library
+from datetime import datetime #date formatting library
+from enum import Enum #enum library
+
+#Time format used by the scanners on campus JH
 time_format = '%m/%d/%y %H:%M:%S'
 
+#Enum class for scan location JH
 class Event(Enum):
     fitzgerald = 0
     pennington = 1
     event      = 2
 
+#class for a visit event
+#JH
 class Visit:
     def __init__(self, arrival_time, barcode, event, is_appointment):
         self.arrival_time   = arrival_time
@@ -29,13 +37,23 @@ class Visit:
     def __str__(self):
         return "Barcode: " + self.barcode + ' Appointment?: ' + str(self.is_appointment) + ' SignIn: ' + self.arrival_time + ' SignOut: ' + self.departure_time + ' Duration: ' + str(self.duration) + ' mins'
 
+#indicies for the corresponding data in a scan list
+#JH
 time_index      = 0
 scan_type_index = 1
 barcode_index   = 2
 
+#formats the time to be a single string from a scan list
+#Params raw_data: a raw data point from the scanner file
+#Returns the raw data with the time and date combined
+#JH
 def format_time(raw_data):
     return list(map(lambda x: [(x[0] + ' ' + x[1]),x[2],x[3]],raw_data))
 
+#Iterates over a scanner file to build a class of Visit objects
+#Params csvfile: file to be parsed
+#Returns a list of Visit class objects
+#JH
 def parse_scanner_data(csvfile):
     csvreader = csv.reader(csvfile,delimiter=',')
     raw_data = []
@@ -50,7 +68,13 @@ def parse_scanner_data(csvfile):
 
     return visits
 
-
+#parses a scan into a visit, either creating a new visit or adding a departure time to an existing visit
+#Params data      : the formatted data to be prased
+#       scan_index: the current scan index to be parsed
+#       visits    : a list of already parsed visits
+#Returns None
+#Mutates the passed in list of visits to be full of Visit class objects
+#JH
 def parse_scan(data,scan_index,visits):
     scan = data[scan_index]
     #if the scan is a wolfcard, check the previous scan to see if it is a scan in or out
@@ -77,8 +101,8 @@ def parse_scan(data,scan_index,visits):
 
 
 #search for the most recent visit with the associated barcode
-def search_visits(visits,barcode):
-    for i in range(len(visits)-1,-1,-1):
-        if visits[i].barcode == barcode:
-            return i
-    return False
+#def search_visits(visits,barcode):
+#    for i in range(len(visits)-1,-1,-1):
+#        if visits[i].barcode == barcode:
+#            return i
+#    return False

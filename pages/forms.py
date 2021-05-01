@@ -2,20 +2,41 @@ from django import forms
 from django.contrib.admin.widgets import AdminDateWidget
 from login.models import CustomUser
 from visualizations.models import ReportPresets
+from .CustomFields import *
 
 # Making this global because it will be reused among multiple
 # "reports' forms
-DEMOGRAPHICS = [('Ethnicity', 'Ethnicity (Coming soon)'),
-                ('Career', 'Career (Coming soon)'),
-                ('Benefit Chapter', 'Benefit Chapter (Coming soon)'),
-                ('Usage by Date', 'Usage by Date'),
-                ('College', 'College (Coming soon)'),
-                ('Total Usage by Location', 'Total Usage by Location'),
-                ('Classification', 'Classification'),
-                ('Major', 'Major'),
-                ('Services', 'Services')]
+DEMOGRAPHICS = [('End Term Semester GPA', 'End Term Semester GPA'),
+                ('End Term Cumulative GPA', 'End Term Cumulative GPA'),
+                ('End Term Attempted Credits', 'End Term Attempted Credits'),
+                ('End Term Earned Credits', 'End Term Earned Credits'),
+                ('End Term Cumulative Completed Credits', 'End Term Cumulative Completed Credits'),
+                ('Benefit Chapter', 'Benefit Chapter'),
+                ('STEM Major', 'STEM Major'),
+                ('Residential Distance from Campus', 'Residential Distance from Campus'),
+                ('Employment', 'Employment'),
+                ('Weekly Hours Worked', 'Weekly Hours Worked'),
+                ('Number of Dependents', 'Number of Dependents'),
+                ('Marital Status', 'Marital Status'),
+                ('Gender Identity', 'Gender Identity'),
+                ('Parent Education', 'Parent Education'),
+                ('Break in University Attendance', 'Break in University Attendance'),
+                ('Pell Grant', 'Pell Grant'),
+                ('Needs Based Grants/Scholarships', 'Needs Based Grants/Scholarships'),
+                ('Merits Based Grants/Scholarships', 'Merits Based Grants/Scholarships'),
+                ('Federal Work Study', 'Federal Work Study'),
+                ('Military Grants', 'Military Grants'),
+                ('Millennium Scholarship', 'Millennium Scholarship'),
+                ('Nevada Pre-Paid', 'Nevada Pre-Paid'),
+                ('Best Method of Contact', 'Best Method of Contact'),
+                  ('Usage by Date', 'Usage by Date'),
+                  ('Total Usage by Location', 'Total Usage by Location'),
+                  ('Classification', 'Classification'),
+                  ('Major', 'Major'),
+                  ('Services', 'Services')]
 
 HIST_TIME_CHOICES = [('Average visitors by time', 'Average visitors by time'),
+                     ('Average visitors by day', 'Average visitors by day'),
                      ('Total visitors by day', 'Total visitors by day'),
                      ('Total visitors by year', 'Total visitors by year')]
 YES_NO = [('Yes', 'Yes'),
@@ -68,10 +89,18 @@ class ChangeEmailForm(CurrentPasswordForm):
                         'name': 'email_addr', 'id': 'NewEmail1'}
     attributes_confirm = {'placeholder': 'email@unr.edu', 'class': 'form-control', 'name': 'email_confirm',
                           'id': 'NewEmail2', 'onchange': 'checkEmailMatch();'}
-    email_addr = forms.EmailField(label='Enter new email:',
-                                  widget=forms.EmailInput(attrs=attributes_email), max_length=50)
-    email_confirm = forms.EmailField(label='Confirm new email:',
-                                     widget=forms.EmailInput(attrs=attributes_confirm), max_length=50)
+    email_addr = forms.CharField(label='Enter new email:',
+                                  widget=forms.TextInput(attrs=attributes_email))
+    email_confirm = forms.CharField(label='Confirm new email:',
+                                     widget=forms.TextInput(attrs=attributes_confirm))
+
+    def clean_email_confirm(self):
+        data = self.cleaned_data['email_confirm']
+
+        if '@' in data:
+            raise ValidationError('Email should not contain "@" and must be a valid UNR email name.')
+
+
 
     def __init__(self, *args, **kwargs):
         super(ChangeEmailForm, self).__init__(*args, **kwargs)
@@ -96,22 +125,78 @@ class SelectReportType(forms.Form):
                ('Individual Statistic', 'Individual Statistic')]
     attributes = {'title': 'I need: '}  # left out form-check-input
     graphType = forms.ChoiceField(choices=CHOICES, widget=forms.RadioSelect(attrs=attributes))
+    custom_title = forms.ChoiceField(choices=YES_NO, widget=forms.RadioSelect(attrs={'id': 'custom_title'}))
+    title = forms.CharField(widget=forms.TextInput(attrs={'id':'title'}), required=False)
 
     def __init__(self, *args, **kwargs):
         super(SelectReportType, self).__init__(*args, **kwargs)
         self.fields['graphType'].label = ''
 
+    def clean(self):
+        data = self.cleaned_data
+
+        if data.get('custom_title') == 'No':
+            return data
+        elif data.get('custom_title') == 'Yes' and data.get('title') != '':
+            return data
+        else:
+            raise forms.ValidationError(
+                'Enter name for \'Title\' or change \'Custom title\' to \'No\'.')
+
 
 # -- Part of the Reports Wizard --
 # If the user selects a bar graph, we want to use this form on the second step
 class BarGraphAxes(forms.Form):
-    selection = forms.ChoiceField(choices=DEMOGRAPHICS)
+    TIME_VS_COMPARISONS = [('Count visits over time', 'Count visits over time'),
+                           ('Compare GPA against demographics', 'Compare GPA against demographics')]
+
+    DEMO = [
+        ('Benefit Chapter', 'Benefit Chapter'),
+        ('Residential Distance from Campus', 'Residential Distance from Campus'),
+        ('Employment', 'Employment'),
+        ('Weekly Hours Worked', 'Weekly Hours Worked'),
+        ('Number of Dependents', 'Number of Dependents'),
+        ('Marital Status', 'Marital Status'),
+        ('Gender Identity', 'Gender Identity'),
+        ('Parent Education', 'Parent Education'),
+        ('Break in University Attendance', 'Break in University Attendance'),
+        ('Pell Grant', 'Pell Grant'),
+        ('Needs Based Grants/Scholarships', 'Needs Based Grants/Scholarships'),
+        ('Merits Based Grants/Scholarships', 'Merits Based Grants/Scholarships'),
+        ('Federal Work Study', 'Federal Work Study'),
+        ('Military Grants', 'Military Grants'),
+        ('Millennium Scholarship', 'Millennium Scholarship'),
+        ('Nevada Pre-Paid', 'Nevada Pre-Paid'),
+        ('Best Method of Contact', 'Best Method of Contact'),
+        ('Classification', 'Classification'),
+        ('Major', 'Major'),
+        ('Services', 'Services')
+    ]
+
+    GPA_COMPARISON = [('Average end term Semester GPA', 'Average end term Semester GPA'),
+                      ('Average end term Cumulative GPA', 'Average end term Cumulative GPA'),
+                       ('Average end term Attempted Credits', 'Average end term Attempted Credits'),
+                      ('Average end term Earned Credits', 'Average end term Earned Credits'),
+                      ('Average end term Cumulative Completed Credits', 'Average end term Cumulative Completed Credits')]
+
+    selection = forms.ChoiceField(choices=DEMOGRAPHICS, required=False)
 
     include_table = forms.ChoiceField(choices=YES_NO, widget=forms.RadioSelect())
+
+    report_type = forms.ChoiceField(choices=TIME_VS_COMPARISONS, initial='Count visits over time', widget=forms.RadioSelect())
+
+    category = forms.ChoiceField(choices=DEMO, required=False)
+
+    gpa_to_compare = forms.ChoiceField(choices=GPA_COMPARISON, required=False)
 
     def __init__(self, *args, **kwargs):
         super(BarGraphAxes, self).__init__(*args, **kwargs)
         self.fields['include_table'].label = 'Include table?'
+
+class PieChartCategories(BarGraphAxes):
+    report_type = None
+    category = None
+    gpa_to_compare = None
 
 
 # Select the reporting time period
@@ -138,15 +223,24 @@ class TimeFrame(forms.Form):
                                                                                'autocomplete': 'off',
                                                                                'name': 'to_time'}))
 
+    def clean(self):
+        data = self.cleaned_data
+
+        if data.get('from_time') > data.get('to_time'):
+            raise forms.ValidationError(
+                'The starting date you entered is later than the ending date.')
+
 
 class HistogramHours(forms.Form):
     from_time = forms.TimeField(input_formats=['%H:%M %p'],
                                 widget=forms.TimeInput(format='%H:%M %p',
-                                                       attrs={'name': 'timepicker', 'class': 'timepicker form-control timepicker-input'}))
+                                                       attrs={'name': 'timepicker',
+                                                              'class': 'timepicker form-control timepicker-input'}))
 
     to_time = forms.TimeField(input_formats=['%H:%M %p'],
                               widget=forms.TimeInput(format='%H:%M %p',
-                                                     attrs={'name': 'timepicker', 'class': 'timepicker form-control timepicker-input'}))
+                                                     attrs={'name': 'timepicker',
+                                                            'class': 'timepicker form-control timepicker-input'}))
 
 
 # Used for selecting between different places that visitors attend in the VMC
@@ -155,12 +249,19 @@ class HistogramHours(forms.Form):
 # User selects one or more checkboxes that correspond to locations to track attendance
 # for in the report.
 class AttendanceDataForm(forms.Form):
-    CHOICES = [('Veteran Services_VMC', 'VMC'),
-               ('Veteran Services_Fitzgerald', 'Fitzgerald')]
+    CHOICES = [('Veteran Services VMC', 'VMC'),
+               ('Veteran Services Fitzgerald', 'Fitzgerald'),
+               ('Veteran Services Event', 'Event')]
 
     attributes = {'title': 'Select Attendance Location:', 'class': 'Locations'}
 
     attendance_data = forms.MultipleChoiceField(choices=CHOICES, widget=forms.CheckboxSelectMultiple(attrs=attributes))
+
+    use_custom_event_name = forms.ChoiceField(choices=YES_NO, widget=forms.RadioSelect(attrs={'id':'use_cust_name'}),
+                                              required=False)
+
+    custom_event_name = forms.CharField(widget=forms.TextInput(attrs={'id': 'cust_name'}), required=False)
+
 
     select_all = forms.BooleanField(required=False)
 
@@ -201,6 +302,9 @@ class CustomizeBarGraph(forms.Form):
     increment_by = forms.IntegerField(widget=forms.NumberInput(attrs={'id': 'increment_by'}),
                                       label='Increment by:', required=False)
 
+    show_multiple_bars_by_location = forms.ChoiceField(choices=Y_N_CHOICES,
+                                                       widget=forms.RadioSelect(attrs={'id': 'grouped_graph'}))
+
     def clean(self):
         data = self.cleaned_data
         print(data.get('max_count', '1'))
@@ -230,6 +334,8 @@ class CustomizeLineGraph(CustomizeBarGraph):
     increment_by = forms.IntegerField(widget=forms.NumberInput(attrs={'id': 'line_increment'}),
                                       label='Increment by:', required=False)
 
+    show_multiple_bars_by_location = None
+
 
 # In the wizard, this is used if the user wants to create a histogram.
 # The user selects different time periods to track attendance.
@@ -256,6 +362,8 @@ class HistogramDetails(CustomizeBarGraph):
     # Integer field for allowing user to customize incrementation
     increment_by = forms.IntegerField(widget=forms.NumberInput(attrs={'id': 'hist_increment'}),
                                       label='Increment by:', required=False)
+
+    show_multiple_bars_by_location = None
 
 
 # Wizard form that allows the user to customize the pie chart
@@ -293,11 +401,17 @@ class CustomizeScatterPlot(CustomizeBarGraph):
 
     display_as = forms.ChoiceField(choices=OPTIONS)
 
+    show_multiple_bars_by_location = None
+
 
 # Individual statistic counting/tracking options
 # Options are similar to the 'axes' options, except the user may
 # want to keep track of averages or percentages instead of total count
 class IndividualStatisticOptions(BarGraphAxes):
+    report_type = None
+    category = None
+    gpa_to_compare = None
+
     COUNT_OPTIONS = [('Total Count', 'Total Count'),
                      ('Daily average', 'Daily average'),
                      ('Monthly average', 'Monthly average'),
