@@ -1,19 +1,23 @@
-import csv
-from datetime import datetime
+import csv  #library for parsing the csv file
+from datetime import datetime #library for dealing with datetime strings
 
 
+#class for a data point, each row in the csv should be able to
+#be easily translated into a data class object aside from the tags
+#column which has it's own class
+#JH
 class Data:
     student_name = ''
     student_email = ''
     student_id = ''
-    #student_alt_id = ''
+    #student_alt_id = '' REMOVED FROM FILE JH
     classification = ''
     major = ''
-    #assigned_staff = ''
-    #care_unit = ''
+    #assigned_staff = '' REMOVED FROM FILE JH
+    #care_unit = '' REMOVED FROM FILE JH
     services = ''
-    #course_name = ''
-    #course_number = ''
+    #course_name = '' REMOVED FROM FILE JH
+    #course_number = '' REMOVED FROM FILE JH
     location = ''
     check_in_date = ''
     check_in_time = ''
@@ -35,12 +39,19 @@ class Data:
         return 'INSERT INTO visits (' + ', '.join(insert_val_names) + ') VALUES (' + ', '.join(insert_val_list) + ');'
 
 
+#Class for tags that mirrors how it's stored in the database
+#student_id is for linking it to the student profile
+#JH
 class Tag:
     student_id = ''
     tag = ''
     date = ''
 
 
+#pulls raw data from a csvfile
+#Params csvfile: the csvfile to pull raw data from
+#Returns data: a list of raw data rows from the csvfile
+#JH
 def raw_data(csvfile):
     reader = csv.reader(csvfile, delimiter=',')
     data = []
@@ -57,13 +68,23 @@ def sublist_finder(data, name):
     return -1
 
 
+#Iterates over the rows in the raw data transforming the
+#relevant data into a data class and tag class object for each row
+#Params csvfile: the csv file to be parsed
+#Returns formatted: a list of data class objects
+#Returns tags: a list of tag class objects
+#JH
 def parse_report(csvfile):
     data = raw_data(csvfile)
     formatted = []
     tags = []
     staff = []
+    if data[0][1] != "Check-Ins":
+        return "ERROR", "Invalid header in navigate file."
+    #Jumps to the column headers part of the file
     titles = data[sublist_finder(data, 'Student Name')]
 
+    #Jumps to the data portion of the file
     data = data[(sublist_finder(data, 'Student Name') + 1):]
     for point in data:
         if point:
@@ -71,6 +92,14 @@ def parse_report(csvfile):
             format_tag(titles, point, tags)
     return formatted, tags
 
+
+#formats raw tag string data into a list of tag objects
+#Params titles: list of column headers from the csvfile
+#       raw   : the raw tag string data from the csvfile
+#       tags  : a list of all of the tags parsed so far
+#Returns None
+#Mutates the tags parameter to be appended with the formatted tags
+#JH
 def format_tag(titles, raw, tags):
     tag_list = raw[titles.index('Tags')].split(',')
     student_id = raw[titles.index('Student ID')]
@@ -82,6 +111,12 @@ def format_tag(titles, raw, tags):
         new_tag.tag = tag
         tags.append(new_tag)
 
+#formats a row of data into a data class object
+#Params titles: list of column headers from the csvfile
+#       raw   : the raw data row from the csvfile
+#Returns None if the data is empty
+#Returns a data class object if the data is not empty
+#JH
 def format_data(titles, raw):
     if not raw:
         return
