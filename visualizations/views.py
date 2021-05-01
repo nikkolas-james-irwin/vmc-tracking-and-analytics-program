@@ -1814,7 +1814,8 @@ def exampleGraph(request):
 
     return render(request, 'visualizations/exampleGraph.html')
 
-
+#Generates a table as a csv so users can download the data tables
+#JH
 def genTableFile(header, values):
     rows = zip(values[0], values[1])
     with open(os.path.join(os.getcwd(), 'table.csv'), 'w+', newline='') as csvfile:

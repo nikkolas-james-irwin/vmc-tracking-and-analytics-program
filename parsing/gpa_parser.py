@@ -1,5 +1,8 @@
 import csv
 
+#class for GPA data
+#each row in the csvfile should be parsed into a different GPAData class object
+#JH
 class GPAData:
     student_id = ''
     student_name = ''
@@ -27,6 +30,11 @@ class GPAData:
 
         return 'INSERT INTO gpa (' + ', '.join(insert_val_names) + ') VALUES (' + ', '.join(insert_val_list) + ');'
 
+
+#removes the header info from the raw data
+#Params raw_data: The raw data from the csvfile
+#Returns the raw data without the header info
+#JH
 def remove_header(raw_data):
     term = ''
     for i in range(0,len(raw_data)):
@@ -39,6 +47,10 @@ def remove_header(raw_data):
         if raw_data[i][0] == 'ID':
             return raw_data[i:],term
 
+#iterates over the rows in a csvfile and returns a list of GPAData class objects
+#Params csvfile: the csvfile to be parsed
+#Returns formatted: A list of GPAData class objects
+#JH
 def parse_gpa(csvfile):
     reader = csv.reader(csvfile, delimiter=',')
     data = []
@@ -54,5 +66,4 @@ def parse_gpa(csvfile):
         formatted.append(GPAData(point,term))
     return formatted
 
-    
 

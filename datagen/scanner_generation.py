@@ -1,3 +1,7 @@
+#OBSOLETE THE SCANNER DATA IS NO LONGER USED BY THE VMC
+#JH
+
+
 import csv
 import random
 
