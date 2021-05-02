@@ -23,6 +23,8 @@ class GPAData:
         self.comp_percent = row[6]
         self.term = term
 
+    #Inserts the data from the GPA class into the gpa table as a single record
+    #Chris
     def get_insert_statement(self):
         insert_val_names = ['student_id','date','end_term_cumulative_gpa','end_term_term_gpa', 'end_term_attempted_credits', 'end_term_earned_credits', 'end_term_credit_completion'];
         insert_val_list = [self.student_id, self.term, self.cum_gpa, self.term_gpa, self.term_credits, self.earned_credits, self.comp_percent];

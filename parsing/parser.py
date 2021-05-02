@@ -28,6 +28,8 @@ class Data:
     staff_id = ''
     staff_email = ''
 
+    #Inserts the content of the class into the visits table as a single record
+    #Chris
     def get_insert_statement(self):
         insert_val_names = ['student_name','student_email','student_id','services','location','check_in_date', 'check_in_time', 'check_out_date', 'check_out_time', 'check_in_duration', 'staff_name', 
 'staff_email', 'staff_id']
