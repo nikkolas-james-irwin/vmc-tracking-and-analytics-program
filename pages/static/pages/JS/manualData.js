@@ -4,6 +4,7 @@ j = 1;
 let AddControl = document.querySelector('#AddControl');
 let p = AddControl.querySelector('#' + rows[i]);
 
+//Creates the first html form which is always displayed on the screen. The html is generated dynamically with this javascript
 p.innerHTML = "<div class='row mb-1 justify-content-center' id='" + 'iii' + rows[i] +"'>"+j+"</div>" + "<div class='row mb-1' id='" + 'i' + rows[i] +"'>"+ 
                 "<div class='col-md-3'>"+ 
                     "<input type='text' style='width:100%;' placeholder='NSHE ID' name='" + 'NSHEID' + i + "'></input>"+
@@ -16,9 +17,8 @@ p.innerHTML = "<div class='row mb-1 justify-content-center' id='" + 'iii' + rows
                 "</div>"+
                 "<div class='col-md-3'>"+
                     "<select name='" + 'location' + i + "' style='width:100%; height:100%'>" + "<option value='' selected disabled>Location</option>" + "<option value='VMC'>VMC</option>" + "<option value='Fitzgerald'>Fitzgerald</option>" + "<option value='Event'>Event</option>" + "</select>" +
-                    // "<input type='text' style='width:100%;' placeholder='Location'></input>"+
                 "</div>"+
-            "</div>"+ //here
+            "</div>"+ 
             "<div class='row' id='" + 'ii' + rows[i] +"'>"+
                 "<div class='col-md-6'>"+ 
                     "<input type='datetime-local' style='width:100%;' name='" + 'checkintime' + i + "'></input>"+
@@ -30,6 +30,8 @@ p.innerHTML = "<div class='row mb-1 justify-content-center' id='" + 'iii' + rows
 // "</div>";
 // "<div>" + i+ "</div>"+
 // var i = 0;
+
+//Creates up to 9 additional html form which can be displayed to the screen. The html is generated dynamically with this javascript
 function addRow() {
     if(i<9) {
         // alert(i);
@@ -49,7 +51,6 @@ function addRow() {
         "</div>"+
         "<div class='col-md-3'>"+
             "<select name='" + 'location' + i + "' style='width:100%; height:100%'>" + "<option value='' selected disabled>Location</option>" + "<option value='VMC'>VMC</option>" + "<option value='Fitzgerald'>Fitzgerald</option>" + "<option value='Event'>Event</option>" + "</select>" +
-            // "<input type='text' style='width:100%;' placeholder='Location'></input>"+
         "</div>"+
     "</div>"+
     "<div class='row' id='" + 'ii' + rows[i] +"'>"+
@@ -65,6 +66,7 @@ function addRow() {
     }
 }
 
+//Removes up to 9 additional html forms from the screen. The html is generated dynamically with this javascript
 function removeRow() {
     if(i>0) {
         let p = AddControl.querySelector('#' + rows[i]);

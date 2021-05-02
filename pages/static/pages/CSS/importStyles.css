@@ -1,7 +1,9 @@
+/* class to hide content */
 .hidden {
     display: none;
 }
 
+/* class to style and position quotes */
 .quote {
     visibility: hidden;
     position: absolute;
@@ -10,37 +12,40 @@
     transition: opacity 600ms, visibility 600ms
 }
 
+/* class to show quote whn javascript cycles */
 .quote.unhidden {
     color: white;
     opacity: 1;
     visibility: visible;
 }
 
+/* class to define the container that holds home page quotes */
 .quote-container {
     width: 1000px;
     font-size: 32px;
     word-wrap: break-word;
-    /* margin: 10% auto; */
-    /* margin: auto; */
 }
 
+/* Generic styling for all butttons */
 button {
     padding: 5px 10px;
     border: 1px solid black;
     transition: 250ms background-color;
 }
 
+/* Generic styling for all butttons */
 button:hover {
     cursor: pointer;
     background-color: #645957;
     color: white;
 }
 
-
+/* class to center text in a container */
 .text-center {
     text-align: center;
 }
 
+/* class defining container for import display */
 .container-import {
     width: 600px;
     max-width: 600px;
@@ -49,6 +54,7 @@ button:hover {
     text-align: center;
 }
 
+/* Id tag for progress stepper that is no obsolete, keeping for continuity */
 #stepProgressBar {
     display: flex;
     width: auto;
@@ -58,18 +64,20 @@ button:hover {
     align-items: flex-end;
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .step {
     text-align: center;
     width: 75px;
-    /* border: 1px solid black; */
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .step-text {
     margin-bottom: 10px;
     justify-content: center;
     color: white;
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .bullet {
     height: 30px;
     width: 30px;
@@ -83,12 +91,14 @@ button:hover {
     line-height: 20px;
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .bullet.completed {
     color: black;
     background-color: #8B7A78;
     border: 1px solid black;
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .bullet.completed::after {
     content: '';
     position: absolute;
@@ -99,54 +109,64 @@ button:hover {
     bottom: 10px;
 }
 
+/* class for setting main background */
 .main-bg {
     color: white;
     background-color: #413B4B;
 }
 
+/* class defining alternate background color */
 .secondary-bg {
     color: white;
     background-color: #312A34;
 }
 
+/* navigate background formatting */
 .nav-bg {
     color: black;
     background-color: #8B7A78;
     border: 1px solid black;
 }
 
+/* navigate background formatting */
 .nav-bg:hover {
     cursor: pointer;
     background-color: #645957;
     color: white;
 }
 
+/* class defining button lengths */
 .admin-btn-width {
     width: 300px;
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .delete-bg {
     color: black;
     background-color: red;
     border: 1px solid black;
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .delete-bg:hover {
     cursor: pointer;
     background-color: rgb(165, 4, 4);
     color: white;
 }
 
+/* ID defining container size */
 #container
 {
     height:2000px;    
 }
 
+/* class tag for progress stepper that is no obsolete, keeping for continuity */
 .hiddenPanel
 {
     opacity:0;
 }
 
+/* main panel for background color on import page */
 .panel-bg {
     color: white;
     background-color: #312A34;
@@ -155,16 +175,19 @@ button:hover {
     padding:20px; 
 }
 
+/* class for button customization */
 .button-sp {
     padding-bottom:30px; 
 }
 
+/* class for upload button on import page */
 .upload-btn {
     height: 35px;
     text-align: center;
     padding: 5px;
 }
 
+/* class for border of upload area */
 .upload-area {
     padding-top: 1rem;
     border: 2px solid black;
@@ -180,12 +203,14 @@ button:hover {
     width: 25%;
 }
 
+/* class to changes tab color when selected */
 .darkTab {
     background-color: #645957;
     border: 2px solid black;
     color: white;
 }
 
+/* class for border surrounding the manaul upload */
 .manualBorder {
     border: 2px solid black;
 }

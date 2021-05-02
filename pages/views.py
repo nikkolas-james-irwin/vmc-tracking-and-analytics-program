@@ -274,20 +274,24 @@ def otherAccountOptions(request, emailAddress):
 
 # Renders the HTML form for creating a new user account
 def newAccount(request):
-    # If the user submits the form
-    if request.method == 'POST':
-        import hashlib
-        import sqlite3
-        # Get account information, such as first name, last name, email address, and password
-        first_name = request.POST.get('firstName')
-        last_name = request.POST.get('lastName')
-        email = request.POST.get('email')
-        # Must have @unr.edu email address
-        email += '@unr.edu'
-        password = request.POST.get('password')
-        CustomUser.objects.create_superuser(email, first_name, last_name, password)
-        return render(request, 'pages/accountCreated.html', {'email': email})
-    return render(request, 'pages/newAccount.html')
+    # If the user is logged in
+    if request.user.is_authenticated:
+        # If the user submits the form
+        if request.method == 'POST':
+            import hashlib
+            import sqlite3
+            # Get account information, such as first name, last name, email address, and password
+            first_name = request.POST.get('firstName')
+            last_name = request.POST.get('lastName')
+            email = request.POST.get('email')
+            # Must have @unr.edu email address
+            email += '@unr.edu'
+            password = request.POST.get('password')
+            CustomUser.objects.create_superuser(email, first_name, last_name, password)
+            return render(request, 'pages/accountCreated.html', {'email': email})
+        return render(request, 'pages/newAccount.html')
+    else: 
+        return redirect('login')
 
 # Renders the HTML form that shows the user that the account was successfully deleted
 def deleteAccount(request, emailAddress):

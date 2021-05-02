@@ -18,12 +18,7 @@
     <div class="row justify-content-center upload-area">
         <div class="col-sm-12">
 
-
-
-
-
-
-
+            <!-- Dynamic tab for uploading navigate data to the backend -->
             <div id="Navigate" class="form">
                 <h4 class="text-center">Navigate Data</h4>
 
@@ -46,6 +41,7 @@
             </div>
             
 
+            <!-- Dynamic tab for uploading GPA data to the backend -->
             <div id="GPA" class="form" style="display:none">
                 <h4 class="text-center">GPA Data</h4>
                 <form class="col" enctype="multipart/form-data" method="post" action="/parse/gpa/" class="">
@@ -66,7 +62,7 @@
                 </form>
             </div>
 
-
+            <!-- Dynamic tab for uploading manual data to the backend -->
             <div id="Manual" class="form" style="display:none;">
                 <h4 class="text-center">Manual Data <button onclick="addRow()" class="btn-sm">+</button><button onclick="removeRow()" class="btn-sm ml-2">-</button></h4>
                 <form class="col" enctype="multipart/form-data" method="post" action="/parse/manual/" class="">
@@ -95,6 +91,7 @@
         </div>
     </div>
 
+    <!-- Message nnotifying users of successful uploads -->
     {% if messages %}
         <h4 class="messages text-center my-5">
         {% for message in messages %}
