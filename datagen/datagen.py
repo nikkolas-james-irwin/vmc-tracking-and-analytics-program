@@ -104,7 +104,7 @@ def gen_service():
 #Randomly picks a location from the list of possible locations
 #JH
 def gen_location():
-    locations = ['Veteran Services_VMC', 'Veteran Services_Fitzgerald', 'Event']
+    locations = ['Veteran Services_VMC', 'Veteran Services_Fitzgerald', 'Veteran_Services Event']
     return random.choice(locations)
 
 #randomly generates a time for a visit to occur on a given date

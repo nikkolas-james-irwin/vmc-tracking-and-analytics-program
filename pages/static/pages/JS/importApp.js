@@ -13,6 +13,7 @@ let currentStep = 1;
 let previousQuoteStep = 0;
 let currentQuoteStep = 10;
 
+//Command to show and hide the option to upload navigate tracking data
 navigateBtn.addEventListener('click', () => {
     const NavigateLink = tLinks[0]
     const GPALink = tLinks[1];
@@ -22,6 +23,7 @@ navigateBtn.addEventListener('click', () => {
     NavigateLink.classList.add('darkTab');
 })
 
+//Command to show and hide the option to upload GPA tracking data
 gpaBtn.addEventListener('click', () => {
     const NavigateLink = tLinks[0]
     const GPALink = tLinks[1];
@@ -31,6 +33,7 @@ gpaBtn.addEventListener('click', () => {
     NavigateLink.classList.remove('darkTab');
 })
 
+//Command to show and hide the option to upload manual tracking data
 manualBtn.addEventListener('click', () => {
     const NavigateLink = tLinks[0]
     const GPALink = tLinks[1];
@@ -40,7 +43,7 @@ manualBtn.addEventListener('click', () => {
     NavigateLink.classList.remove('darkTab');
 })
 
-
+//Command to activate and cycle quotes on homepage 
 function quoteFade() {
     
     if(currentQuoteStep > 9) {
@@ -68,6 +71,7 @@ function quoteFade() {
         quoteFade();
     }, 30000);
 }
+
 
 function openForm(formName) {
     var i;

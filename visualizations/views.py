@@ -12,6 +12,7 @@ from visualizations.models import ReportPresets
 from datetime import datetime
 from pages.views import TimeFrame
 from django.views.static import serve
+from urllib.parse import unquote
 import sqlite3
 
 import dash
@@ -26,47 +27,56 @@ import csv
 
 import os;
 
+# Path for getting the Python scripts for database queries
 print(os.path.dirname(__file__))
+# Subdirectory labeled "sql_queries"
 for module in os.listdir(os.path.dirname(__file__) + '/sql_queries'):
     if module == '__init__.py' or module[-3:] != '.py':
         continue
+    # Import the sql query script
     exec('from .sql_queries import ' + module[:-3] + ' as ' + module[:-3]);
 del module;
 
 
+# Exception thrown for empty queries
+# Should not reach this point
 class emptyList(Exception):
     pass
 
 
+# ReportGenerator base class
+# Used in conjunction with the State design pattern
 class ReportGenerator():
     def __init__(self, request, data):
+        # HTTP request
         self.request = request
+        # Data that contains the wizard form submission
         self.data = data
+        # Default is BarGraph
         self.barGraph = BarGraph(self, self.request, self.data)
-        # To be implemented later
-        # self.histogram = Histogram(data, request, self)
-        # self.lineGraph = State(data, request, self)
-        # self.pieChart = State(data, request, self)
-        # self.scatterPlot = State(data, request, self)
-        # self.individualStatistic = State(data, request, self)
 
+        # Default state = bar graph
         self.state = self.barGraph
+        # Get the current state
         self.state.findState()
 
-        # TODO remove this later
-        print(data)
-
+    # Setters ------------
     def setState(self, state):
         self.state = state
 
     def setData(self, data):
         self.data = data
 
+    # End of setters -------
+
+    # Function that is common between all graph types
+    # Get the report, return the Dash widget
     def generateReport(self):
         app, title, validDates = self.state.generateReport()
         return app, title, validDates
 
 
+# State design pattern
 class State:
 
     def __init__(self, reportGenerator, request, data):
@@ -74,6 +84,7 @@ class State:
         self.request = request
         self.data = data
 
+    # Abstract state methods
     def findState(self):
         pass
 
@@ -89,6 +100,8 @@ class State:
     def checkGraphType(self, data):
         pass
 
+    # If the user specifies that they want to use a custom title on the first page of the Reports Wizard,
+    # get the custom title here
     def get_custom_title(self):
         form_dict = self.data['form_data']
         inner_dict = form_dict[0]
@@ -96,6 +109,8 @@ class State:
 
         return custom_title
 
+    # Check if any visits were returned based on the user's query. If visits
+    # were returned, return False
     def checkInvalidQuery(self, results):
         if not results:
             return False
@@ -103,11 +118,17 @@ class State:
             return True
 
 
+# BarGraph (inherts from State)
 class BarGraph(State):
     def __init__(self, reportGenerator, request, data):
         super(BarGraph, self).__init__(reportGenerator, request, data)
 
+    # BarGraph is the default state, but we need to check if the user wants a different type of report
+    # e.g. if the user wants a Histogram, enter the histogram state
     def findState(self):
+        # Wizard form data is based on a nested dictionary structure
+        # Eeach of the wizard form fields represent a key to the dictionary
+
         inner_dict = self.data['form_data']
         graph_type = inner_dict[0]
 
@@ -141,6 +162,10 @@ class BarGraph(State):
             self.title = self.category
 
         # Convert selection into query '*' for SQL
+        # This will be used to gather the appropriate python query script from the "sql_queries" subdirectory
+        # Each key represents a choice in the Wizard
+        # Each key will then correspond to the python script that will run the query
+        # E.g. "end_term_term_gpa" = "end_term_term_gpa.py"
         self.query_dictionary = {'End Term Semester GPA': 'end_term_term_gpa',
                                  'End Term Cumulative GPA': 'end_term_cumulative_gpa',
                                  'End Term Attempted Credits': 'end_term_attempted_credits', 'End Term Earned Credits':
@@ -162,6 +187,8 @@ class BarGraph(State):
                                  'Usage by Date': 'usage_by_date', 'Classification': 'classification', 'Major': 'major',
                                  'Services': 'services'}
 
+        # If the user wants a GPA vs. demographics report, this dictionary will be used to
+        # gather the approrpiate python script from the "sql_queries" subdirectory
         self.gpa_dictionary = {'Average end term Semester GPA': 'end_term_term_gpa',
                                'Average end term Cumulative GPA': 'end_term_cumulative_gpa',
                                'Average end term Attempted Credits': 'end_term_attempted_credits',
@@ -175,6 +202,8 @@ class BarGraph(State):
         self.from_time = self.date_subdict['from_time']
         self.to_time = self.date_subdict['to_time']
 
+    # Styling page from the Reports Wizard
+    # Common to all graph types, but the specifics vary based on the graph selection
     def determineStyleSettings(self):
         self.style_dict = self.inner_dict[3]
         self.bar_color = self.style_dict['select_bar_color']
@@ -184,34 +213,46 @@ class BarGraph(State):
             self.increment_by = self.style_dict['increment_by']
         self.show_multiple_bars = self.style_dict['show_multiple_bars_by_location']
 
+    # Get the locations that the user want to track visits for
+    # Ex: user will enter "VS Fitzgerald" and "VS Event"
+    # This will get "VS Fitzgerald" and "VS Event" checkbox selections and store them for the query
     def determineLocationsToTrack(self):
         self.location_dict = self.inner_dict[4]
         self.location_list = self.location_dict['attendance_data']
         self.select_all = self.location_dict['select_all']
         self.use_custom_event_name = self.location_dict['use_custom_event_name']
         self.custom_event_name = self.location_dict['custom_event_name']
+        # Check if the user wants to select all locations to represent this choice in the report
+        # title (if not custom title)
         if self.select_all:
             self.all_locations = True
         else:
             self.all_locations = False
 
+    # The main function that will generate the report
     def generateReport(self):
+        # Get all of the user's choices from the Reports Wizard
         self.determineSelection()
         self.determineDateRange()
         self.determineStyleSettings()
         self.determineLocationsToTrack()
 
+        # If the user wants to include all locations that they selected into a single bar for each category
         if self.show_multiple_bars == 'No':
             app, title, validDates = self.generateSingleBars()
             return app, title, validDates
+        # If the user wants to separate the bars for each category based on location
         elif self.show_multiple_bars == 'Yes':
             app, title, validDates = self.generateGroupedBars()
             return app, title, validDates
 
     def generateSingleBars(self):
+        # Connect to the database
         conn = sqlite3.connect('vmc_tap.db');
         conn_results = []
 
+        # Determines the default title
+        # Either visits based report, or GPA-based demographics report
         if self.all_locations:
             if self.report_type == 'Count visits over time':
                 self.title = "Count of " + self.title + ", all Locations from " + self.from_time.strftime(
@@ -219,6 +260,8 @@ class BarGraph(State):
             elif self.report_type == 'Compare GPA against demographics':
                 self.title = self.gpa_to_compare + " by " + self.category + ", all Locations, from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
+        # If the user did not select all available locations, include each location selection in the title rather than
+        # "all locations"
         else:
             loc_str = ''
             for loc in self.location_list:
@@ -226,7 +269,8 @@ class BarGraph(State):
                     loc_str += loc + ', '
                 else:
                     loc_str += loc
-
+            # Generates a non-custom title (if custom title was not selected) for individual locations,
+            # if the user did not select "all locations"
             if self.report_type == 'Count visits over time':
                 self.title = "Count of " + self.title + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
@@ -234,6 +278,7 @@ class BarGraph(State):
                 self.title = self.gpa_to_compare + " by " + self.category + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
 
+        # If the user opted for a custom title, get the name of the custom title
         custom_title = self.get_custom_title()
         if custom_title == '':
             title = self.title
@@ -241,7 +286,8 @@ class BarGraph(State):
             title = custom_title
 
         substr = "\""
-
+        # Gather the user's location selections from the Reports Wizard to put them in the correct format
+        # for the SQL query
         for i, location in enumerate(self.location_list):
             if i != (len(self.location_list) - 1):
                 substr += location + '\' or location = \''
@@ -250,11 +296,16 @@ class BarGraph(State):
 
         substr += '"'
 
+        # If the user wants to query visits over a given date range,
+        # get the appropriate python script for the query, passing in the date range and locations
+        # Each python script has a single function called "get_query()" but the details of the function
+        # vary based on the type of query
         if self.report_type == 'Count visits over time':
             self.conn_string_sql = eval(
                 self.query_dictionary[self.selection] + ".get_query('" + self.from_time.strftime(
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
+        # Same as above, except the user is querying GPA vs. demographics instead of visits
         elif self.report_type == 'Compare GPA against demographics':
             self.conn_string_sql = eval(
                 self.query_dictionary[self.category] + "_gpa.get_query('" + self.gpa_dictionary[
@@ -263,13 +314,7 @@ class BarGraph(State):
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
 
-        print('location_list: ', self.location_list)
-
-        # conn_string_sql = "select location, count(" + self.selection + ") from visits group by location;"
-
-        print('conn_string_sql', self.conn_string_sql)
-        #       print('conn.execute: ', conn.execute(conn_string_sql))
-
+        # Execute the database query via the SQL command obtained
         for d in conn.execute(self.conn_string_sql):
             conn_results.append(d);
 
@@ -277,35 +322,35 @@ class BarGraph(State):
 
         # Rotates 2D array to work w/ plotly
         conn_results_rotated = list(zip(*conn_results[::-1]))
-        print('Conn results_rotated:', conn_results_rotated)
 
+        # If the query returned valid visits
         if conn_results_rotated:
-            if 'Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+            # If the user used a custom event name
+            if 'Veteran Services Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+                # Replace all results returned in the query that state "Veteran Services Event" to the
+                # name of the custom event specified by the user
                 conn_results_rotated[0] = list(conn_results_rotated[0])
-                i = conn_results_rotated[0].index('Event')
+                i = conn_results_rotated[0].index('Veteran Services Event')
                 custom_name = self.custom_event_name
                 conn_results_rotated[0][i] = custom_name
                 conn_results_rotated[0] = tuple(conn_results_rotated[0])
 
-        print('Conn results_rotated back into a tuple', conn_results_rotated)
-
         app = DjangoDash('Graph')  # replaces dash.Dash
 
-        # print('conn_results_rotated: ', conn_results_rotated)
-
+        # Check if the query was valid
         validDates = self.checkInvalidQuery(conn_results_rotated)
 
+        # If the query did not return any visits, fill the x and y axis with placeholders
         if not validDates:
             x_axis = [1, 2, 3, 4, 5, 6, 7, 8]
             y_axis = [1, 2, 3, 4, 5, 6, 7, 8]
         else:
+            # Extract the x and y-axis from the tuple results
             x_axis = conn_results_rotated[0]
             y_axis = conn_results_rotated[1]
+            # Convert the tuples into Python lists
             x_axis = x_axis[::-1]
             y_axis = y_axis[::-1]
-            # for tuple in conn_results:
-            #    x_axis.append(tuple[0])
-            #   y_axis.append(tuple[1])
 
         # If autoscaling is not enabled by the user, we need to set the max count of the y-axis
         if self.autoscale != 'Yes':
@@ -313,23 +358,21 @@ class BarGraph(State):
         else:
             layout = Layout(title=title)
 
+        # Setup the bar graph object to display via Plotly/Dash
         fig = go.Figure(data=[go.Bar(x=x_axis, y=y_axis, marker=dict(color=self.bar_color.lower()))], layout=layout)
         fig.update_xaxes(type='category')
 
         # Now implement the custom scaling if enabled
         if self.autoscale != 'Yes':
             fig.update_yaxes(dtick=self.increment_by)
-        # graph = [Bar(x=x_axis,y=y_axis)]
-        # layout = Layout(title='Length of Visits',xaxis=dict(title='Length (min)'),yaxis=dict(title='# of Visits'))
-        # fig = Figure(data=graph,layout=layout)
-        # plot_div = plot(fig,output_type='div',show_link=False,link_text="")
 
-        # Dash instance for includng a table
+        # Dash instance for including a table
         if self.include_table == 'Yes' and validDates:
             header = ['Row Labels', 'Count of Location']
             x_list = list(x_axis)
             y_list = list(y_axis)
 
+            # If we are counting visits over time, get the grand total
             if self.report_type == 'Count visits over time':
                 total = 0
                 for count in y_axis:
@@ -337,6 +380,7 @@ class BarGraph(State):
 
                 x_list.append('<b>Grand Total</b>')
                 y_list.append(total)
+            # If we are getting averages, get the average instead of a grand total
             elif self.report_type == 'Compare GPA against demographics':
                 total_values = len(y_list)
                 total = 0
@@ -346,16 +390,19 @@ class BarGraph(State):
                 total /= total_values
                 y_list.append(round(total, 2))
 
-            print('x_list:', x_list)
-
+            # Convert table values into list format as required by Plotly
             values = [x_list, y_list]
 
-            table = go.Figure(data=[go.Table(header=dict(values=header), cells=dict(values=values))],
-                              layout=Layout(title=title))
-            table.update_layout(height=(200 + len(x_list) * 23))
+            # Setup the table object to be rendered later by Dash/Plotly
+            table = go.Figure(
+                data=[go.Table(header=dict(values=header, align='left'), cells=dict(values=values, align='left'))],
+                layout=Layout(title=title))
+            table.update_layout(height=(220 + len(x_list) * 25))
 
+            # Create a separate list to setup the CSV file
             new_x_list = []
 
+            # Go though the table list and get rid of the '<b>' HTML markers -- not wanted for a CSV file
             for i, stri in enumerate(x_list):
                 if isinstance(stri, int) or isinstance(stri, float):
                     replaced_str = str(stri)
@@ -365,14 +412,18 @@ class BarGraph(State):
                 new_string = temp_new_string.replace('</b>', '')
                 new_x_list.append(new_string)
 
+            # Setup the new list for the CSV file
             values = [new_x_list, y_list]
 
+            # Generate the CSV file
             genTableFile(header, values)
 
+            # Dash layout if the table is included
             app.layout = html.Div(children=[dcc.Graph(id='table', figure=table)
                 , dcc.Graph(id='figure', figure=fig, style={'height': '40vh'}),
                                             ], style={'height': '40vh', 'width': '70vw'})
         else:
+            # Dash layout if the table is not included
             app.layout = html.Div(children=[
                 dcc.Graph(id='figure', figure=fig, style={'height': '90vh'}),
             ], style={'height': '70vh', 'width': '70vw'})
@@ -381,9 +432,12 @@ class BarGraph(State):
 
     def generateGroupedBars(self):
 
+        # Connect to the database
         conn = sqlite3.connect('vmc_tap.db');
         conn_results = []
 
+        # Determines the default title
+        # Either visits based report, or GPA-based demographics report
         if self.all_locations:
             if self.report_type == 'Count visits over time':
                 self.title = "Count of " + self.title + ", all Locations from " + self.from_time.strftime(
@@ -391,6 +445,9 @@ class BarGraph(State):
             elif self.report_type == 'Compare GPA against demographics':
                 self.title = self.gpa_to_compare + " by " + self.category + ", all Locations, from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
+
+        # If the user did not select all available locations, include each location selection in the title rather than
+        # "all locations"
         else:
             loc_str = ''
             for loc in self.location_list:
@@ -399,6 +456,8 @@ class BarGraph(State):
                 else:
                     loc_str += loc
 
+            # Generates a non-custom title (if custom title was not selected) for individual locations,
+            # if the user did not select "all locations"
             if self.report_type == 'Count visits over time':
                 self.title = "Count of " + self.title + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
@@ -406,6 +465,7 @@ class BarGraph(State):
                 self.title = self.gpa_to_compare + " by " + self.category + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
 
+        # If the user opted for a custom title, get the name of the custom title
         custom_title = self.get_custom_title()
         if custom_title == '':
             title = self.title
@@ -421,6 +481,11 @@ class BarGraph(State):
                 substr += location
 
         self.conn_string_sql = []
+
+        # If the user wants to query visits over a given date range,
+        # get the appropriate python script for the query, passing in the date range and locations
+        # Each python script has a single function called "get_query()" but the details of the function
+        # vary based on the type of query
         if self.report_type == 'Count visits over time':
             for location in self.location_list:
                 loc_str = "'"
@@ -429,6 +494,7 @@ class BarGraph(State):
                     eval(self.query_dictionary[self.selection] + ".get_query('" + self.from_time.strftime(
                         '%Y-%m-%d') + "', '" + self.to_time.strftime(
                         '%Y-%m-%d') + "', " + loc_str + ")"))
+        # Same as above, except the user is querying GPA vs. demographics instead of visits
         elif self.report_type == 'Compare GPA against demographics':
             for location in self.location_list:
                 loc_str = "'"
@@ -440,17 +506,6 @@ class BarGraph(State):
                         '%Y-%m-%d') + "', '" + self.to_time.strftime(
                         '%Y-%m-%d') + "', " + loc_str + ")"))
 
-            # self.conn_string_sql.append(
-            #   "select " + self.group_by + ", count(" + self.selection + ") from visits where (location = \'" + location + "\') and check_in_date >= \'" + self.from_time.strftime(
-            #      '%Y-%m-%d') + "\' and check_in_date <= \'" + self.to_time.strftime(
-            #   '%Y-%m-%d') + "\' group by " + self.group_by + ";")
-        print('location_list: ', self.location_list)
-
-        # conn_string_sql = "select location, count(" + self.selection + ") from visits group by location;"
-
-        print('conn_string_sql', self.conn_string_sql)
-        #       print('conn.execute: ', conn.execute(conn_string_sql))
-
         location_results = []
         valid_dates = []
 
@@ -460,10 +515,15 @@ class BarGraph(State):
                 conn_results.append(d)
             # Rotates 2D array to work w/ plotly
             conn_results_rotated = list(zip(*conn_results[::-1]))
+
+            # If the query returned valid visits
             if conn_results_rotated:
-                if 'Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+                # If the user used a custom event name
+                if 'Veteran Services Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+                    # Replace all results returned in the query that state "Veteran Services Event" to the
+                    # name of the custom event specified by the user
                     conn_results_rotated[0] = list(conn_results_rotated[0])
-                    i = conn_results_rotated[0].index('Event')
+                    i = conn_results_rotated[0].index('Veteran Services Event')
                     custom_name = self.custom_event_name
                     conn_results_rotated[0][i] = custom_name
                     conn_results_rotated[0] = tuple(conn_results_rotated[0])
@@ -472,28 +532,25 @@ class BarGraph(State):
 
         conn.close()
 
-        print('Conn results_rotated:', conn_results_rotated)
-
         app = DjangoDash('Graph')  # replaces dash.Dash
 
         y_axis = []
         x_axis = []
         validDates = True
+        # If the query did not return any visits, fill the x and y axis with placeholders
         for i, location in enumerate(self.location_list):
             if not valid_dates[i]:
                 validDates = False
                 x_axis.append([1, 2, 3, 4, 5, 6, 7, 8])
                 y_axis.append([1, 2, 3, 4, 5, 6, 7, 8])
             else:
+                # Extract the x and y-axis from the tuple results
                 x_results = location_results[i][0]
                 y_results = location_results[i][1]
                 x_results = x_results[::-1]
                 y_results = y_results[::-1]
                 x_axis.append(x_results)
                 y_axis.append(y_results)
-            # for tuple in conn_results:
-            #    x_axis.append(tuple[0])
-            #   y_axis.append(tuple[1])
 
         # If autoscaling is not enabled by the user, we need to set the max count of the y-axis
         if self.autoscale != 'Yes':
@@ -501,25 +558,18 @@ class BarGraph(State):
         else:
             layout = Layout(title=title)
 
-        # fig = go.Figure(data=[go.Bar(x=x_axis, y=y_axis, marker=dict(color=self.bar_color.lower()))], layout=layout)
-
         data_list = []
         for i, location in enumerate(self.location_list):
-            if location == 'Event' and self.use_custom_event_name == 'Yes':
+            if location == 'Veteran Services Event' and self.use_custom_event_name == 'Yes':
                 data_list.append(go.Bar(name=self.custom_event_name, x=x_axis[i], y=y_axis[i]))
             else:
                 data_list.append(go.Bar(name=location, x=x_axis[i], y=y_axis[i]))
-
-        print('data_list', data_list)
 
         fig = go.Figure(data=data_list, layout=layout)
         # Now implement the custom scaling if enabled
         if self.autoscale != 'Yes':
             fig.update_yaxes(dtick=self.increment_by)
-        # graph = [Bar(x=x_axis,y=y_axis)]
-        # layout = Layout(title='Length of Visits',xaxis=dict(title='Length (min)'),yaxis=dict(title='# of Visits'))
-        # fig = Figure(data=graph,layout=layout)
-        # plot_div = plot(fig,output_type='div',show_link=False,link_text="")
+
 
         # Dash instance for includng a table
         if self.include_table == 'Yes':
@@ -527,17 +577,17 @@ class BarGraph(State):
             x_list = []
             y_list = []
 
+            # Append the inner list for each location
             for i, location in enumerate(self.location_list):
                 x_list.append(list(x_axis[i]))
                 y_list.append(list(y_axis[i]))
 
-            # x_list = list(x_axis)
-            # y_list = list(y_axis)
 
             running_total = 0
             print('x_list', x_list)
             print('y_list', y_list)
             for i, location in enumerate(self.location_list):
+                # If we are counting visits over time, get the grand total
                 if self.report_type == 'Count visits over time':
                     x_list[i].insert(0, '<b>Location<b>')
                     y_list[i].insert(0, '<b>' + location + '<b>')
@@ -549,6 +599,7 @@ class BarGraph(State):
                     x_list[i].append('<b>Total for location<b>')
                     y_list[i].append(loc_subtotal)
                     running_total += loc_subtotal
+                # If we are getting averages, get the average instead of a grand tota
                 elif self.report_type == 'Compare GPA against demographics':
                     total_values = len(y_list[i])
                     x_list[i].insert(0, '<b>Location<b>')
@@ -567,10 +618,11 @@ class BarGraph(State):
             # Last visited 3/6/2021
             flattened_x_list = [value for loc in x_list for value in loc]
 
-            if conn_results_rotated[0]:
-                if 'Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
-                    i = flattened_x_list.index('Event')
-                    flattened_x_list[i] = self.custom_event_name
+            if conn_results_rotated:
+                if conn_results_rotated[0]:
+                    if 'Veteran Services Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+                        i = flattened_x_list.index('Veteran Services Event')
+                        flattened_x_list[i] = self.custom_event_name
 
             flattened_y_list = [value for loc in y_list for value in loc]
             # End of reference -----------------------------------------------------------------------------
@@ -580,28 +632,48 @@ class BarGraph(State):
             if self.report_type == 'Compare GPA against demographics':
                 running_total /= len(self.location_list)
 
+            # Round the average to 2 decimal places
             flattened_y_list.append(round(running_total, 2))
 
             values = [flattened_x_list, flattened_y_list]
-            table = go.Figure(data=[go.Table(header=dict(values=header), cells=dict(values=values))],
-                              layout=Layout(title=title))
-            table.update_layout(height=(200 + len(flattened_x_list) * 25))
 
+            # Dash layout if the table is included
+            table = go.Figure(
+                data=[go.Table(header=dict(values=header, align='left'), cells=dict(values=values, align='left'))],
+                layout=Layout(title=title))
+            table.update_layout(height=(220 + len(flattened_x_list) * 25))
+
+            # Setup the new list for the CSV file
             new_x_list = []
 
+            # Get rid of the <b> HTML markers that were used in the table
             for value in flattened_x_list:
                 if isinstance(value, str):
                     temp_new_string = value.replace('<b>', '')
                     new_string = temp_new_string.replace('</b>', '')
                     new_x_list.append(new_string)
 
-            values = [new_x_list, flattened_y_list]
+            # Repeat te process for the y-axis, getting rid of the HTML <b> markers
+            new_y_list = []
+            for value in flattened_y_list:
+                if isinstance(value, str):
+                    temp_new_string = value.replace('<b>', '')
+                    new_string = temp_new_string.replace('</b>', '')
+                    new_y_list.append(new_string)
+                else:
+                    new_y_list.append(value)
+
+            # Generate the CSV file
+            values = [new_x_list, new_y_list]
 
             genTableFile(header, values)
 
+            # Dash layout if table is included
             app.layout = html.Div(children=[dcc.Graph(id='table', figure=table)
                 , dcc.Graph(id='figure', figure=fig, style={'height': '40vh'}),
                                             ], style={'height': '40vh', 'width': '70vw'})
+
+        # Dash layout without the table
         else:
             app.layout = html.Div(children=[
                 dcc.Graph(id='figure', figure=fig, style={'height': '90vh'}),
@@ -609,12 +681,16 @@ class BarGraph(State):
 
         return app, title, validDates
 
-
+# Histogram (inherits from State)
+# Returns a Plotly/Dash Histogram to the user for reporting purposes
 class Histogram(State):
     def __init__(self, reportGenerator, request, data):
         super(Histogram, self).__init__(reportGenerator, request, data)
 
+    # Get the current state from the State design pattern structure
     def findState(self):
+        # Wizard form data is based on a nested dictionary structure
+        # Each of the wizard form fields represent a key to the dictionary
         inner_dict = self.data['form_data']
         graph_type = inner_dict[0]
 
@@ -637,6 +713,10 @@ class Histogram(State):
         self.title = self.selection
         self.include_table = self.selection_dict['include_table']
 
+        # This will be used to gather the appropriate python query script from the "sql_queries" subdirectory
+        # Each key represents a choice in the Wizard
+        # Each key will then correspond to the python script that will run the query
+        # E.g. "end_term_term_gpa" = "end_term_term_gpa.py"
         self.query_dictionary = {'Average visitors by time': 'avg_by_time', 'Average visitors by day': 'avg_by_day',
                                  'Total visitors by day': 'total_by_day', 'Total visitors by year': 'total_by_year'}
 
@@ -646,6 +726,8 @@ class Histogram(State):
         self.from_time = self.date_subdict['from_time']
         self.to_time = self.date_subdict['to_time']
 
+    # Styling page from the Reports Wizard
+    # Common to all graph types, but the specifics vary based on the graph selection
     def determineStyleSettings(self):
         self.style_dict = self.inner_dict[3]
         self.bar_color = self.style_dict['select_bar_color']
@@ -654,6 +736,9 @@ class Histogram(State):
             self.max_count = self.style_dict['max_count']
             self.increment_by = self.style_dict['increment_by']
 
+    # Get the locations that the user want to track visits for
+    # Ex: user will enter "VS Fitzgerald" and "VS Event"
+    # This will get "VS Fitzgerald" and "VS Event" checkbox selections and store them for the query
     def determineLocationsToTrack(self):
         self.location_dict = self.inner_dict[4]
         self.location_list = self.location_dict['attendance_data']
@@ -663,6 +748,7 @@ class Histogram(State):
         else:
             self.all_locations = False
 
+    # The main function that will generate the report
     def generateReport(self):
         self.determineSelection()
         self.determineDateRange()
@@ -672,9 +758,11 @@ class Histogram(State):
         conn = sqlite3.connect('vmc_tap.db');
         conn_results = []
 
+        # If the user wants to include all locations that they selected into a single bar for each category
         if self.all_locations:
             self.title = "Count of " + self.title + ", All Locations, from " + self.from_time.strftime(
                 '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
+        # If the user wants to separate the bars for each category based on location
         else:
             loc_str = ''
             for loc in self.location_list:
@@ -683,9 +771,12 @@ class Histogram(State):
                 else:
                     loc_str += loc
 
+            # Determines the default title
+            # Based on date range and selected locations
             self.title = "Count of " + self.title + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                 '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
 
+        # Get the custom title from the form (if selected by the user)
         custom_title = self.get_custom_title()
         if custom_title == '':
             title = self.title
@@ -694,6 +785,8 @@ class Histogram(State):
 
         substr = "\""
 
+        # Gather the user's location selections from the Reports Wizard to put them in the correct format
+        # for the SQL query
         for i, location in enumerate(self.location_list):
             if i != (len(self.location_list) - 1):
                 substr += location + '\' or location = \''
@@ -702,35 +795,15 @@ class Histogram(State):
 
         substr += '"'
 
+        # If the user wants to query visits over a given date range,
+        # get the appropriate python script for the query, passing in the date range and locations
+        # Each python script has a single function called "get_query()" but the details of the function
+        # vary based on the type of query
         self.conn_string_sql = eval(self.query_dictionary[self.selection] + ".get_query('" + self.from_time.strftime(
             '%Y-%m-%d') + "', '" + self.to_time.strftime(
             '%Y-%m-%d') + "', " + substr + ")")
 
-        # conn_string_sql = "SELECT this_time, COUNT(this_time) FROM (SELECT LTRIM(SUBSTR(check_in_time,1,2),'0') || ' ' || SUBSTR(check_in_time,7,2) AS this_time, SUBSTR(check_in_time,1,2) + CASE(SUBSTR(check_in_time,7,2)) WHEN 'PM' THEN '12' ELSE '0' END AS sorting FROM visits) AS ctime GROUP BY this_time ORDER BY sorting;"
-        # if self.selection == 'Average visitors by time':
-        #   conn_string_sql = "SELECT cat_hours.hour_display, round(IFNULL(SUM(c_visits.visit_count), 0)/(julianday('" + self.to_time.strftime(
-        #      '%Y-%m-%d') + "') - julianday('" + self.from_time.strftime(
-        #     '%Y-%m-%d') + "')), 2) FROM cat_hours LEFT JOIN (SELECT LTRIM(SUBSTR(check_in_time,1,2),'0') || ' ' || SUBSTR(check_in_time,7,2) AS hour_display, 1 AS visit_count, check_in_date FROM visits WHERE (location = '" + substr + "') and check_in_date BETWEEN '" + self.from_time.strftime(
-        #    '%Y-%m-%d') + "' AND '" + self.to_time.strftime(
-        #   '%Y-%m-%d') + "') AS c_visits ON cat_hours.hour_display = c_visits.hour_display GROUP BY cat_hours.hour_display ORDER BY cat_hours.ordering;"
-        # if self.selection == 'Average visitors by day':
-        # Parts of this query was referenced from StackOverflow: https://stackoverflow.com/questions/4319302/format-date-as-day-of-week
-        # conn_string_sql = "SELECT CASE cast (strftime('%w', check_in_date) AS INTEGER) WHEN 0 THEN 'Sunday' WHEN 1 THEN 'Monday' WHEN 2 THEN 'Tuesday' WHEN 3 THEN 'Wednesday' WHEN 4 THEN 'Thursday' WHEN 5 THEN 'Friday' ELSE 'Saturday' END AS Day, round(count(check_in_date)/(julianday('" + self.to_time.strftime(
-        #       '%Y-%m-%d') + "') - julianday('" + self.from_time.strftime(
-        #      '%Y-%m-%d') + "')), 2) FROM visits WHERE (location = '" + substr + "') and check_in_date BETWEEN '" + self.from_time.strftime(
-        #     '%Y-%m-%d') + "' AND '" + self.to_time.strftime('%Y-%m-%d') + "' GROUP BY strftime('%w',check_in_date);"
-        # if self.selection == 'Total visitors by day':
-        #   conn_string_sql = "SELECT CASE cast (strftime('%w', check_in_date) AS INTEGER) WHEN 0 THEN 'Sunday' WHEN 1 THEN 'Monday' WHEN 2 THEN 'Tuesday' WHEN 3 THEN 'Wednesday' WHEN 4 THEN 'Thursday' WHEN 5 THEN 'Friday' ELSE 'Saturday' END AS Day, count(check_in_date) FROM visits WHERE (location = '" + substr + "') and check_in_date BETWEEN '" + self.from_time.strftime(
-        #      '%Y-%m-%d') + "' AND '" + self.to_time.strftime('%Y-%m-%d') + "' GROUP BY strftime('%w',check_in_date);"
-        # elif self.selection == 'Total visitors by year':
-        #    conn_string_sql = "SELECT SUBSTR(check_in_date,1,4), COUNT(check_in_date) FROM visits WHERE (location = '" + substr + "') and check_in_date BETWEEN '" + self.from_time.strftime(
-        #       '%Y-%m-%d') + "' AND '" + self.to_time.strftime('%Y-%m-%d') + "' GROUP BY SUBSTR(check_in_date,1,4);"
-
-        # conn_string_sql = "select location, count(" + self.selection + ") from visits group by location;"
-
-        print('conn_string_sql', self.conn_string_sql)
-        #       print('conn.execute: ', conn.execute(conn_string_sql))
-
+        # Execute the database query via the SQL command obtained
         for d in conn.execute(self.conn_string_sql):
             conn_results.append(d);
 
@@ -739,36 +812,24 @@ class Histogram(State):
         # Rotates 2D array to work w/ plotly
         conn_results_rotated = list(zip(*conn_results[::-1]));
 
-        print('Conn results_rotated:', conn_results_rotated)
-
         app = DjangoDash('Graph')  # replaces dash.Dash
 
-        # print('conn_results_rotated: ', conn_results_rotated)
-
+        # Check if the query was valid
         validDates = self.checkInvalidQuery(conn_results_rotated)
 
+        # If the query did not return any visits, fill the x and y axis with placeholders
         if not validDates:
             x_axis = [1, 2, 3, 4, 5, 6, 7, 8]
             y_axis = [1, 2, 3, 4, 5, 6, 7, 8]
-        # raise emptyList("List is empty")
+        # Extract the x and y-axis from the tuple results
         else:
             x_axis = conn_results_rotated[0]
             x_axis = x_axis[::-1]
             x_axis = list(x_axis)
 
-            # x_axis = ['Time1', 'Time2', 'Time3', 'Time4']
-
             y_axis = conn_results_rotated[1]
             y_axis = y_axis[::-1]
             y_axis = list(y_axis)
-
-            # y_axis = ["220", "100", "330", "410"]
-            # for tuple in conn_results:
-            #   x_axis.append(tuple[0])
-            #  y_axis.append(tuple[1])
-
-            print('x_axis: ', x_axis)
-            print(y_axis)
 
         # If autoscaling is not enabled by the user, we need to set the max count of the y-axis
         if self.autoscale != 'Yes':
@@ -776,6 +837,7 @@ class Histogram(State):
         else:
             layout = Layout(title=title)
 
+        # Setup the Histogram object to display based on the user's settings from the Wizard
         fig = go.Figure(layout=layout)
         fig.add_trace(
             go.Histogram(histfunc="sum", y=y_axis, x=x_axis, name="count", marker=dict(color=self.bar_color.lower())))
@@ -788,12 +850,8 @@ class Histogram(State):
         # Now implement the custom scaling if enabled
         if self.autoscale != 'Yes':
             fig.update_yaxes(dtick=self.increment_by)
-        # graph = [Bar(x=x_axis,y=y_axis)]
-        # layout = Layout(title='Length of Visits',xaxis=dict(title='Length (min)'),yaxis=dict(title='# of Visits'))
-        # fig = Figure(data=graph,layout=layout)
-        # plot_div = plot(fig,output_type='div',show_link=False,link_text="")
 
-        # Dash instance for includng a table
+        # Dash instance for including a table
         if self.include_table == 'Yes' and validDates:
             header = ['Row Labels', 'Count of Location']
             x_list = list(x_axis)
@@ -805,40 +863,48 @@ class Histogram(State):
             for count in y_axis:
                 total += count
 
+            # Get the grand total for the total count in the table
             x_list.append('<b>Grand Total</b>')
             y_list.append(total)
-            table = go.Figure(data=[go.Table(header=dict(values=header), cells=dict(values=values))],
-                              layout=Layout(title=title))
-            table.update_layout(height=(200 + len(x_list) * 23))
 
+            # Setup the table object for display
+            table = go.Figure(
+                data=[go.Table(header=dict(values=header, align='left'), cells=dict(values=values, align='left'))],
+                layout=Layout(title=title))
+            table.update_layout(height=(220 + len(x_list) * 23))
+
+            # Start a new list for the CSV file based on the x-axis
             new_x_list = []
 
+            # Get rid of the HTML <b> markers (not needed in CSV)
             for str in x_list:
                 temp_new_string = str.replace('<b>', '')
                 new_string = temp_new_string.replace('</b>', '')
                 new_x_list.append(new_string)
 
+            # Construct the new list for the CSV file
             values = [new_x_list, y_list]
 
+            # Generate the CSV file
             genTableFile(header, values)
-
+            # Dash layout if table is included
             app.layout = html.Div(children=[dcc.Graph(id='table', figure=table)
                 , dcc.Graph(id='figure', figure=fig, style={'height': '40vh'}),
                                             ], style={'height': '40vh', 'width': '70vw'})
+        # Dash layout if table is not included
         else:
             app.layout = html.Div(children=[
                 dcc.Graph(id='figure', figure=fig, style={'height': '90vh'}),
             ], style={'height': '70vh', 'width': '70vw'})
 
-        print('validDates:', validDates)
-
         return app, title, validDates
 
-
+# PieChart (inherits from State)
 class PieChart(State):
     def __init__(self, reportGenerator, request, data):
         super(PieChart, self).__init__(reportGenerator, request, data)
 
+    # Get the current state based on the user's choice in the Reports Wizard
     def findState(self):
         inner_dict = self.data['form_data']
         graph_type = inner_dict[0]
@@ -856,7 +922,17 @@ class PieChart(State):
         self.title = self.selection
         self.include_table = self.selection_dict['include_table']
 
-        self.query_dictionary = {'Benefit Chapter': 'benefit_chapter',
+        # Convert selection into query '*' for SQL
+        # This will be used to gather the appropriate python query script from the "sql_queries" subdirectory
+        # Each key represents a choice in the Wizard
+        # Each key will then correspond to the python script that will run the query
+        # E.g. "end_term_term_gpa" = "end_term_term_gpa.py"
+        self.query_dictionary = {'End Term Semester GPA': 'end_term_term_gpa',
+                                 'End Term Cumulative GPA': 'end_term_cumulative_gpa',
+                                 'End Term Attempted Credits': 'end_term_attempted_credits', 'End Term Earned Credits':
+                                     'end_term_earned_credits',
+                                 'End Term Cumulative Completed Credits': 'end_term_credit_completion',
+                                 'Benefit Chapter': 'benefit_chapter',
                                  'Residential Distance from Campus': 'currently_live', 'Employment': 'employment',
                                  'Weekly Hours Worked': 'work_hours', 'Number of Dependents': 'dependents',
                                  'Marital Status': 'marital_status', 'Gender Identity': 'gender',
@@ -879,6 +955,8 @@ class PieChart(State):
         self.from_time = self.date_subdict['from_time']
         self.to_time = self.date_subdict['to_time']
 
+    # Styling page from the Reports Wizard
+    # Common to all graph types, but the specifics vary based on the graph selection
     def determineStyleSettings(self):
         self.style_dict = self.inner_dict[3]
         self.style_selection = self.style_dict['Data_units']
@@ -890,6 +968,9 @@ class PieChart(State):
         elif self.style_selection == 'Count':
             self.textinfo = 'value'
 
+    # Get the locations that the user want to track visits for
+    # Ex: user will enter "VS Fitzgerald" and "VS Event"
+    # This will get "VS Fitzgerald" and "VS Event" checkbox selections and store them for the query
     def determineLocationsToTrack(self):
         self.location_dict = self.inner_dict[4]
         self.location_list = self.location_dict['attendance_data']
@@ -902,7 +983,9 @@ class PieChart(State):
         else:
             self.all_locations = False
 
+    # The main function that will generate the report
     def generateReport(self):
+        # Get all of the user's selections from the Reports Wizard
         self.determineSelection()
         self.determineDateRange()
         self.determineStyleSettings()
@@ -911,10 +994,14 @@ class PieChart(State):
         conn = sqlite3.connect('vmc_tap.db');
         conn_results = []
 
+        # Determines the default title if the user selected all locations
         if self.all_locations:
             self.title = "Count of " + self.title + ", All Locations, from " + self.from_time.strftime(
                 '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
+        # Default title if the user did not select all locations
         else:
+            # If the user did not select all available locations, include each location selection in the title rather than
+            # "all locations"
             loc_str = ''
             for loc in self.location_list:
                 if loc != self.location_list[-1]:
@@ -922,9 +1009,12 @@ class PieChart(State):
                 else:
                     loc_str += loc
 
+            # Generates a non-custom title (if custom title was not selected) for individual locations,
+            # if the user did not select "all locations"
             self.title = "Count of " + self.title + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                 '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
 
+        # If the user opted for a custom title, get the name of the custom title
         custom_title = self.get_custom_title()
         if custom_title == '':
             title = self.title
@@ -933,6 +1023,8 @@ class PieChart(State):
 
         substr = "\""
 
+        # Gather the user's location selections from the Reports Wizard to put them in the correct format
+        # for the SQL query
         for i, location in enumerate(self.location_list):
             if i != (len(self.location_list) - 1):
                 substr += location + '\' or location = \''
@@ -941,15 +1033,12 @@ class PieChart(State):
 
         substr += '"'
 
+        # Build the SQL command for the database query based on the user's selections in the Reports Wizard
+        # Each python script has a single function called "get_query()" but the details of the function
+        # vary based on the type of query
         self.conn_string_sql = eval(self.query_dictionary[self.selection] + ".get_query('" + self.from_time.strftime(
             '%Y-%m-%d') + "', '" + self.to_time.strftime(
             '%Y-%m-%d') + "', " + substr + ")")
-        print('location_list: ', self.location_list)
-
-        # conn_string_sql = "select location, count(" + self.selection + ") from visits group by location;"
-
-        print('conn_string_sql', self.conn_string_sql)
-        #       print('conn.execute: ', conn.execute(conn_string_sql))
 
         for d in conn.execute(self.conn_string_sql):
             conn_results.append(d);
@@ -959,92 +1048,97 @@ class PieChart(State):
         # Rotates 2D array to work w/ plotly
         conn_results_rotated = list(zip(*conn_results[::-1]));
 
+        # If the query returned valid visits
         if conn_results_rotated:
-            if 'Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+            # If the user used a custom event name
+            if 'Veteran Services Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+                # Replace all results returned in the query that state "Veteran Services Event" to the
+                # name of the custom event specified by the user
                 conn_results_rotated[0] = list(conn_results_rotated[0])
-                i = conn_results_rotated[0].index('Event')
+                i = conn_results_rotated[0].index('Veteran Services Event')
                 custom_name = self.custom_event_name
                 conn_results_rotated[0][i] = custom_name
                 conn_results_rotated[0] = tuple(conn_results_rotated[0])
 
-        print('Conn results_rotated:', conn_results_rotated)
-
         app = DjangoDash('Graph')  # replaces dash.Dash
 
-        # print('conn_results_rotated: ', conn_results_rotated)
-
+        # Check if the query was valid
         validDates = self.checkInvalidQuery(conn_results_rotated)
 
+        # If the query did not return any visits, fill the x and y axis with placeholders
         if conn_results_rotated == []:
             x_axis = [1, 2, 3, 4, 5, 6, 7, 8]
             y_axis = [1, 2, 3, 4, 5, 6, 7, 8]
-        # raise emptyList("List is empty")
+
         else:
+            # Extract the x and y-axis from the tuple results
             x_axis = conn_results_rotated[0]
             y_axis = conn_results_rotated[1]
             x_axis = x_axis[::-1]
             y_axis = y_axis[::-1]
-            # for tuple in conn_results:
-            #    x_axis.append(tuple[0])
-            #   y_axis.append(tuple[1])
 
-            print('x_axis: ', x_axis)
-            print(y_axis)
-
+        # Build the Pie Chart object
         layout = Layout(title=title)
         fig = go.Figure(data=[go.Pie(labels=x_axis, values=y_axis, textinfo=self.textinfo)], layout=layout)
 
-        # graph = [Bar(x=x_axis,y=y_axis)]
-        # layout = Layout(title='Length of Visits',xaxis=dict(title='Length (min)'),yaxis=dict(title='# of Visits'))
-        # fig = Figure(data=graph,layout=layout)
-        # plot_div = plot(fig,output_type='div',show_link=False,link_text="")
-
-        # Dash instance for includng a table
+        # Dash instance for including a table
         if self.include_table == 'Yes' and validDates:
             header = ['Row Labels', 'Count of Location']
             x_list = list(x_axis)
             y_list = list(y_axis)
             values = [x_list, y_list]
-            print('values: ', values)
 
+            # Count the grand total
             total = 0
             for count in y_axis:
                 total += count
-
+            # Append the grand total to the end of the table
             x_list.append('<b>Grand Total</b>')
             y_list.append(total)
-            table = go.Figure(data=[go.Table(header=dict(values=header), cells=dict(values=values))],
-                              layout=Layout(title=title))
+
+            # Setup the table object to be rendered later by Dash/Plotly
+            table = go.Figure(
+                data=[go.Table(header=dict(values=header, align='left'), cells=dict(values=values, align='left'))],
+                layout=Layout(title=title))
 
             app.layout = html.Div(children=[dcc.Graph(id='table', figure=table)
                 , dcc.Graph(id='figure', figure=fig, style={'height': '80vh', 'width': '80vw'}),
                                             ], style={'height': '40vh', 'width': '70vw'})
-            table.update_layout(height=(200 + len(x_list) * 23))
+            table.update_layout(height=(220 + len(x_list) * 23))
 
+            # Create a separate list to setup the CSV file
             new_x_list = []
 
-            for str in x_list:
-                temp_new_string = str.replace('<b>', '')
+            # Go though the table list and get rid of the '<b>' HTML markers -- not wanted for a CSV file
+            for i, stri in enumerate(x_list):
+                if isinstance(stri, int) or isinstance(stri, float):
+                    replaced_str = str(stri)
+                    x_list[i] = replaced_str
+                    stri = replaced_str
+                temp_new_string = stri.replace('<b>', '')
                 new_string = temp_new_string.replace('</b>', '')
                 new_x_list.append(new_string)
 
+            # Setup the new list for the CSV file
             values = [new_x_list, y_list]
 
+            # Generate the CSV file
             genTableFile(header, values)
         else:
+            # Dash layout if the table is not included
             app.layout = html.Div(children=[
                 dcc.Graph(id='figure', figure=fig, style={'height': '90vh'}),
             ], style={'height': '70vh', 'width': '70vw'})
 
         return app, title, validDates
 
-
-# Select count from visits where date >= from_date and date <= to_date group by location
-
+# IndividualStatistic (inherits from State)
 class IndividualStatistic(State):
     def __init__(self, reportGenerator, request, data):
         super(IndividualStatistic, self).__init__(reportGenerator, request, data)
 
+    # BarGraph is the default state, but we need to check if the user wants a different type of report
+    # e.g. if the user wants a Histogram, enter the histogram state
     def findState(self):
         inner_dict = self.data['form_data']
         graph_type = inner_dict[0]
@@ -1062,7 +1156,7 @@ class IndividualStatistic(State):
         self.title = self.selection
         self.subselection = self.selection_dict['count_options']
 
-        # Convert selection into query '*' for SQL
+        # Get the appropriate category for the SQL query
         if self.selection == 'Total Usage by Location':
             self.group_by = 'location'
         elif self.selection == 'Usage by Date':
@@ -1092,7 +1186,16 @@ class IndividualStatistic(State):
         elif self.selection == 'Break in University Attendance':
             self.group_by = 'break_in_attendance'
 
-        self.query_dictionary = {'Benefit Chapter': 'benefit_chapter',
+        # This will be used to gather the appropriate python query script from the "sql_queries" subdirectory
+        # Each key represents a choice in the Wizard
+        # Each key will then correspond to the python script that will run the query
+        # E.g. "end_term_term_gpa" = "end_term_term_gpa.py"
+        self.query_dictionary = {'End Term Semester GPA': 'end_term_term_gpa',
+                                 'End Term Cumulative GPA': 'end_term_cumulative_gpa',
+                                 'End Term Attempted Credits': 'end_term_attempted_credits', 'End Term Earned Credits':
+                                     'end_term_earned_credits',
+                                 'End Term Cumulative Completed Credits': 'end_term_credit_completion',
+                                 'Benefit Chapter': 'benefit_chapter',
                                  'Residential Distance from Campus': 'currently_live', 'Employment': 'employment',
                                  'Weekly Hours Worked': 'work_hours', 'Number of Dependents': 'dependents',
                                  'Marital Status': 'marital_status', 'Gender Identity': 'gender',
@@ -1115,6 +1218,8 @@ class IndividualStatistic(State):
         self.from_time = self.date_subdict['from_time']
         self.to_time = self.date_subdict['to_time']
 
+    # Styling page from the Reports Wizard
+    # Common to all graph types, but the specifics vary based on the graph selection
     def determineStyleSettings(self):
         self.style_dict = self.inner_dict[3]
         self.header_font_color = self.style_dict['header_font_color']
@@ -1122,6 +1227,9 @@ class IndividualStatistic(State):
         self.header_font_size = self.style_dict['header_font_size']
         self.statistic_font_size = self.style_dict['statistic_font_size']
 
+    # Get the locations that the user want to track visits for
+    # Ex: user will enter "VS Fitzgerald" and "VS Event"
+    # This will get "VS Fitzgerald" and "VS Event" checkbox selections and store them for the query
     def determineLocationsToTrack(self):
         self.location_dict = self.inner_dict[4]
         self.location_list = self.location_dict['attendance_data']
@@ -1129,12 +1237,16 @@ class IndividualStatistic(State):
         self.use_custom_event_name = self.location_dict['use_custom_event_name']
         self.custom_event_name = self.location_dict['custom_event_name']
 
+        # Check if the user wants to select all locations to represent this choice in the report
+        # title (if not custom title)
         if self.select_all:
             self.all_locations = True
         else:
             self.all_locations = False
 
+    # The main function that will generate the report
     def generateReport(self):
+        # Get all of the user's choices from the Reports Wizard
         self.determineSelection()
         self.determineDateRange()
         self.determineStyleSettings()
@@ -1143,9 +1255,13 @@ class IndividualStatistic(State):
         conn = sqlite3.connect('vmc_tap.db');
         conn_results = []
 
+        # Determines the default title
+        # Either visits based report, or GPA-based demographics report
         if self.all_locations:
             self.title = "Count of " + self.title + ", All Locations, from " + self.from_time.strftime(
                 '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
+        # If the user did not select all available locations, include each location selection in the title rather than
+        # "all locations"
         else:
             loc_str = ''
             for loc in self.location_list:
@@ -1154,9 +1270,12 @@ class IndividualStatistic(State):
                 else:
                     loc_str += loc
 
+            # Generates a non-custom title (if custom title was not selected) for individual locations,
             self.title = "Count of " + self.title + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                 '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
 
+        # Determines the non-custom title depending on whether the user wants a total count, daily average, monthly
+        # average, or yearly average
         if self.subselection == 'Total Count':
             new_title = 'Count of ' + self.selection + ' from ' + self.from_time.strftime(
                 '%m/%d/%y') + ' to ' + self.to_time.strftime('%m/%d/%y')
@@ -1180,36 +1299,17 @@ class IndividualStatistic(State):
 
         new_title += '\n' + title2
 
+        # If the user opted for a custom title, get the name of the custom title
         custom_title = self.get_custom_title()
         if custom_title == '':
             title = new_title
         else:
             title = custom_title
 
-        # if self.subselection == 'Total Count':
-        #   conn_string_sql = "select " + self.group_by + ", count(" + self.selection + ") from visits where (location = \'" + substr + "\') and check_in_date >= \'" + self.from_time.strftime(
-        #      '%Y-%m-%d') + "\' and check_in_date <= \'" + self.to_time.strftime(
-        #     '%Y-%m-%d') + "\' group by " + self.group_by + ";"
-        # print('location_list: ', self.location_list)
-        # elif self.subselection == 'Daily average':
-        # conn_string_sql = "select major, avg(count(*)) from (select check_in_date, count(*) from visits) group by major;"
-        #   conn_string_sql = "SELECT " + self.group_by + ", ROUND(COUNT(" + self.group_by + ") / (julianday('" + self.to_time.strftime(
-        #      '%Y-%m-%d') + "') - julianday('" + self.from_time.strftime(
-        #     '%Y-%m-%d') + "')), 2) FROM visits WHERE check_in_date BETWEEN '" + self.from_time.strftime(
-        #    '%Y-%m-%d') + "' AND '" + self.to_time.strftime('%Y-%m-%d') + "' GROUP BY " + self.group_by + ";"
-        # elif self.subselection == 'Monthly average':
-        #   conn_string_sql = "SELECT " + self.group_by + ", ROUND(COUNT(" + self.group_by + ") / (strftime('%m','" + self.to_time.strftime(
-        #      '%Y-%m-%d') + "') - strftime('%m', '" + self.from_time.strftime(
-        #     '%Y-%m-%d') + "')), 2) FROM visits WHERE check_in_date BETWEEN '" + self.from_time.strftime(
-        #    '%Y-%m-%d') + "' AND '" + self.to_time.strftime('%Y-%m-%d') + "' GROUP BY " + self.group_by + ";"
-        # elif self.subselection == 'Yearly average':
-        #   conn_string_sql = "SELECT " + self.group_by + ", ROUND(COUNT(" + self.group_by + ") / (strftime('%Y','" + self.to_time.strftime(
-        #      '%Y-%m-%d') + "') - strftime('%Y', '" + self.from_time.strftime(
-        #     '%Y-%m-%d') + "')), 2) FROM visits WHERE check_in_date BETWEEN '" + self.from_time.strftime(
-        #    '%Y-%m-%d') + "' AND '" + self.to_time.strftime('%Y-%m-%d') + "' GROUP BY " + self.group_by + ";"
-
         substr = "\""
 
+        # Gather the user's location selections from the Reports Wizard to put them in the correct format
+        # for the SQL query
         for i, location in enumerate(self.location_list):
             if i != (len(self.location_list) - 1):
                 substr += location + '\' or location = \''
@@ -1218,22 +1318,31 @@ class IndividualStatistic(State):
 
         substr += '"'
 
+        # If the user wants to query visits over a given date range,
+        # get the appropriate python script for the query, passing in the date range and locations
+        # Each python script has a single function called "get_query()" but the details of the function
+        # vary based on the type of query
+
+        # Query based on total count of visitors
         if self.subselection == 'Total Count':
             self.conn_string_sql = eval(
                 self.query_dictionary[self.selection] + ".get_query('" + self.from_time.strftime(
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
+        # Query based on daily average visitors over a given date range
         elif self.subselection == 'Daily average':
             self.conn_string_sql = eval(
                 "ind_daily_avg.get_query('" + self.query_dictionary[self.selection] + "', '" + self.from_time.strftime(
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
+        # Monthly average visitors
         elif self.subselection == 'Monthly average':
             self.conn_string_sql = eval(
                 "ind_monthly_avg.get_query('" + self.query_dictionary[
                     self.selection] + "', '" + self.from_time.strftime(
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
+        # Yearly average visitors for multiple years
         elif self.subselection == 'Yearly average':
             self.conn_string_sql = eval(
                 "ind_yearly_avg.get_query('" + self.query_dictionary[
@@ -1241,13 +1350,7 @@ class IndividualStatistic(State):
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
 
-        print('location_list: ', self.location_list)
-
-        # conn_string_sql = "select location, count(" + self.selection + ") from visits group by location;"
-
-        print('conn_string_sql', self.conn_string_sql)
-        #       print('conn.execute: ', conn.execute(conn_string_sql))
-
+        # Execute the query
         for d in conn.execute(self.conn_string_sql):
             conn_results.append(d);
 
@@ -1256,86 +1359,102 @@ class IndividualStatistic(State):
         # Rotates 2D array to work w/ plotly
         conn_results_rotated = list(zip(*conn_results[::-1]))
 
+        # If the query returned valid visits
         if conn_results_rotated:
-            if 'Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+            # If the user used a custom event name
+            if 'Veteran Services Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+                # Replace all results returned in the query that state "Veteran Services Event" to the
+                # name of the custom event specified by the user
                 conn_results_rotated[0] = list(conn_results_rotated[0])
-                i = conn_results_rotated[0].index('Event')
+                i = conn_results_rotated[0].index('Veteran Services Event')
                 custom_name = self.custom_event_name
                 conn_results_rotated[0][i] = custom_name
                 conn_results_rotated[0] = tuple(conn_results_rotated[0])
 
-        print('Conn results_rotated:', conn_results_rotated)
-
         app = DjangoDash('Graph')  # replaces dash.Dash
 
-        # print('conn_results_rotated: ', conn_results_rotated)
-
+        # Check if the query was valid
         validDates = self.checkInvalidQuery(conn_results_rotated)
 
+        # If the query did not return any visits, fill the x and y axis with placeholders
         if conn_results_rotated == []:
             x_axis = [1, 2, 3, 4, 5, 6, 7, 8]
             y_axis = [1, 2, 3, 4, 5, 6, 7, 8]
-        # raise emptyList("List is empty")
+
         else:
+            # Extract the x and y-axis from the tuple results
             x_axis = conn_results_rotated[0]
             y_axis = conn_results_rotated[1]
+            # Convert the tuples into Python lists
             x_axis = x_axis[::-1]
             y_axis = y_axis[::-1]
-            # for tuple in conn_results:
-            #    x_axis.append(tuple[0])
-            #   y_axis.append(tuple[1])
 
+        # Dash instance for including a table
         header = ['Row Labels', 'Count of Location']
         x_list = list(x_axis)
         y_list = list(y_axis)
         values = [x_list, y_list]
-        print('values: ', values)
 
+        # Get a running total of the visits
         total = 0
         for count in y_axis:
             total += count
 
+        # Get the grand total with HTML <b> markers to display as bold font
         x_list.append('<b>Grand Total</b>')
         y_list.append(total)
 
+        # Setup the table object to be rendered later by Dash/Plotly
         layout = Layout(title=title)
-        table = go.Figure(data=[go.Table(header=dict(values=header, height=int(self.header_font_size) * 3,
+        table = go.Figure(data=[go.Table(header=dict(values=header, align='left', height=int(self.header_font_size) * 3,
                                                      font=dict(color=self.header_font_color,
                                                                size=int(self.header_font_size))),
-                                         cells=dict(values=values, height=int(self.statistic_font_size) * 3,
+                                         cells=dict(values=values, align='left',
+                                                    height=int(self.statistic_font_size) * 3,
                                                     font=dict(color=self.statistic_font_color,
                                                               size=int(self.statistic_font_size))))],
                           layout=Layout(title=title))
 
-        table.update_layout(height=(200 + len(x_list) * 23))
+        table.update_layout(height=(220 + len(x_list) * 27))
 
+        # Create a separate list to setup the CSV file
         new_x_list = []
 
         if validDates:
-            for str in x_list:
-                temp_new_string = str.replace('<b>', '')
+            # Go though the table list and get rid of the '<b>' HTML markers -- not wanted for a CSV file
+            for i, stri in enumerate(x_list):
+                if isinstance(stri, int) or isinstance(stri, float):
+                    replaced_str = str(stri)
+                    x_list[i] = replaced_str
+                    stri = replaced_str
+                temp_new_string = stri.replace('<b>', '')
                 new_string = temp_new_string.replace('</b>', '')
                 new_x_list.append(new_string)
 
+        # Setup the new list for the CSV file
         values = [new_x_list, y_list]
 
+        # Generate the CSV file
         genTableFile(header, values)
 
-        app.layout = html.Div(children=[dcc.Graph(id='table', figure=table, style={'height': '70vh'})
-                                        ], style={'height': '80vh', 'width': '70vw'})
+        # Dash layout for the individual statistic table
+        app.layout = html.Div(children=[dcc.Graph(id='table', figure=table, style={'height': '110vh'})
+                                        ], style={'height': '110vh', 'width': '70vw'})
 
-        # graph = [Bar(x=x_axis,y=y_axis)]
-        # layout = Layout(title='Length of Visits',xaxis=dict(title='Length (min)'),yaxis=dict(title='# of Visits'))
-        # fig = Figure(data=graph,layout=layout)
-        # plot_div = plot(fig,output_type='div',show_link=False,link_text="")
+
         return app, title, validDates
 
-
+# ScatterPlot (inherits from State)
+# Used for scatter plots and line graphs
 class ScatterPlot(State):
     def __init__(self, reportGenerator, request, data):
         super(ScatterPlot, self).__init__(reportGenerator, request, data)
 
+    # BarGraph is the default state, but we need to check if the user wants a different type of report
+    # e.g. if the user wants a Histogram, enter the histogram state
     def findState(self):
+        # Wizard form data is based on a nested dictionary structure
+        # Eeach of the wizard form fields represent a key to the dictionary
         inner_dict = self.data['form_data']
         graph_type = inner_dict[0]
 
@@ -1361,6 +1480,10 @@ class ScatterPlot(State):
             self.title = self.category
 
         # Convert selection into query '*' for SQL
+        # This will be used to gather the appropriate python query script from the "sql_queries" subdirectory
+        # Each key represents a choice in the Wizard
+        # Each key will then correspond to the python script that will run the query
+        # E.g. "end_term_term_gpa" = "end_term_term_gpa.py"
         self.query_dictionary = {'Benefit Chapter': 'benefit_chapter',
                                  'Residential Distance from Campus': 'currently_live', 'Employment': 'employment',
                                  'Weekly Hours Worked': 'work_hours', 'Number of Dependents': 'dependents',
@@ -1377,6 +1500,8 @@ class ScatterPlot(State):
                                  'Usage by Date': 'usage_by_date', 'Classification': 'classification', 'Major': 'major',
                                  'Services': 'services'}
 
+        # If the user wants a GPA vs. demographics report, this dictionary will be used to
+        # gather the approrpiate python script from the "sql_queries" subdirectory
         self.gpa_dictionary = {'Average end term Semester GPA': 'end_term_term_gpa',
                                'Average end term Cumulative GPA': 'end_term_cumulative_gpa',
                                'Average end term Attempted Credits': 'end_term_attempted_credits',
@@ -1389,6 +1514,8 @@ class ScatterPlot(State):
         self.from_time = self.date_subdict['from_time']
         self.to_time = self.date_subdict['to_time']
 
+    # Styling page from the Reports Wizard
+    # Common to all graph types, but the specifics vary based on the graph selection
     def determineStyleSettings(self):
         self.style_dict = self.inner_dict[3]
         self.bar_color = self.style_dict['select_dot_color']
@@ -1403,18 +1530,25 @@ class ScatterPlot(State):
         elif self.style_dict['display_as'] == 'Dots and Lines':
             self.mode = 'lines+markers'
 
+    # Get the locations that the user want to track visits for
+    # Ex: user will enter "VS Fitzgerald" and "VS Event"
+    # This will get "VS Fitzgerald" and "VS Event" checkbox selections and store them for the query
     def determineLocationsToTrack(self):
         self.location_dict = self.inner_dict[4]
         self.location_list = self.location_dict['attendance_data']
         self.select_all = self.location_dict['select_all']
         self.use_custom_event_name = self.location_dict['use_custom_event_name']
         self.custom_event_name = self.location_dict['custom_event_name']
+        # Check if the user wants to select all locations to represent this choice in the report
+        # title (if not custom title)
         if self.select_all:
             self.all_locations = True
         else:
             self.all_locations = False
 
+    # The main function that will generate the report
     def generateReport(self):
+        # Get all of the user's choices from the Reports Wizard
         self.determineSelection()
         self.determineDateRange()
         self.determineStyleSettings()
@@ -1423,6 +1557,8 @@ class ScatterPlot(State):
         conn = sqlite3.connect('vmc_tap.db')
         conn_results = []
 
+        # Determines the default title
+        # Either visits based report, or GPA-based demographics report
         if self.all_locations:
             if self.report_type == 'Count visits over time':
                 self.title = "Count of " + self.title + ", all Locations from " + self.from_time.strftime(
@@ -1430,6 +1566,8 @@ class ScatterPlot(State):
             elif self.report_type == 'Compare GPA against demographics':
                 self.title = self.gpa_to_compare + " by " + self.category + ", all Locations, from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
+        # If the user did not select all available locations, include each location selection in the title rather than
+        # "all locations"
         else:
             loc_str = ''
             for loc in self.location_list:
@@ -1437,7 +1575,8 @@ class ScatterPlot(State):
                     loc_str += loc + ', '
                 else:
                     loc_str += loc
-
+            # Generates a non-custom title (if custom title was not selected) for individual locations,
+            # if the user did not select "all locations"
             if self.report_type == 'Count visits over time':
                 self.title = "Count of " + self.title + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
@@ -1445,6 +1584,7 @@ class ScatterPlot(State):
                 self.title = self.gpa_to_compare + " by " + self.category + " at location(s):" + loc_str + " from " + self.from_time.strftime(
                     '%m/%d/%Y') + " to " + self.to_time.strftime('%m/%d/%Y')
 
+        # If the user opted for a custom title, get the name of the custom title
         custom_title = self.get_custom_title()
         if custom_title == '':
             title = self.title
@@ -1453,6 +1593,8 @@ class ScatterPlot(State):
 
         substr = "\""
 
+        # Gather the user's location selections from the Reports Wizard to put them in the correct format
+        # for the SQL query
         for i, location in enumerate(self.location_list):
             if i != (len(self.location_list) - 1):
                 substr += location + '\' or location = \''
@@ -1461,11 +1603,16 @@ class ScatterPlot(State):
 
         substr += '"'
 
+        # If the user wants to query visits over a given date range,
+        # get the appropriate python script for the query, passing in the date range and locations
+        # Each python script has a single function called "get_query()" but the details of the function
+        # vary based on the type of query
         if self.report_type == 'Count visits over time':
             self.conn_string_sql = eval(
                 self.query_dictionary[self.selection] + ".get_query('" + self.from_time.strftime(
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
+        # Same as above, except the user is querying GPA vs. demographics instead of visits
         elif self.report_type == 'Compare GPA against demographics':
             self.conn_string_sql = eval(
                 self.query_dictionary[self.category] + "_gpa.get_query('" + self.gpa_dictionary[
@@ -1473,13 +1620,8 @@ class ScatterPlot(State):
 
                     '%Y-%m-%d') + "', '" + self.to_time.strftime(
                     '%Y-%m-%d') + "', " + substr + ")")
-        print('location_list: ', self.location_list)
 
-        # conn_string_sql = "select location, count(" + self.selection + ") from visits group by location;"
-
-        print('conn_string_sql', self.conn_string_sql)
-        #       print('conn.execute: ', conn.execute(conn_string_sql))
-
+        # Execute the database query via the SQL command obtained
         for d in conn.execute(self.conn_string_sql):
             conn_results.append(d);
 
@@ -1488,94 +1630,108 @@ class ScatterPlot(State):
         # Rotates 2D array to work w/ plotly
         conn_results_rotated = list(zip(*conn_results[::-1]))
 
+        # If the query returned valid visits
         if conn_results_rotated:
-            if 'Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+            # If the user used a custom event name
+            if 'Veteran Services Event' in conn_results_rotated[0] and self.use_custom_event_name == 'Yes':
+                # Replace all results returned in the query that state "Veteran Services Event" to the
+                # name of the custom event specified by the user
                 conn_results_rotated[0] = list(conn_results_rotated[0])
-                i = conn_results_rotated[0].index('Event')
+                i = conn_results_rotated[0].index('Veteran Services Event')
                 custom_name = self.custom_event_name
                 conn_results_rotated[0][i] = custom_name
                 conn_results_rotated[0] = tuple(conn_results_rotated[0])
 
-        print('Conn results_rotated:', conn_results_rotated)
-
         app = DjangoDash('Graph')  # replaces dash.Dash
 
-        # print('conn_results_rotated: ', conn_results_rotated)
-
+        # Check if the query was valid
         validDates = self.checkInvalidQuery(conn_results_rotated)
 
+        # If the query did not return any visits, fill the x and y axis with placeholders
         if conn_results_rotated == []:
             x_axis = [1, 2, 3, 4, 5, 6, 7, 8]
             y_axis = [1, 2, 3, 4, 5, 6, 7, 8]
-        # raise emptyList("List is empty")
         else:
+            # Extract the x and y-axis from the tuple results
             x_axis = conn_results_rotated[0]
             y_axis = conn_results_rotated[1]
             x_axis = x_axis[::-1]
             y_axis = y_axis[::-1]
-            # for tuple in conn_results:
-            #    x_axis.append(tuple[0])
-            #   y_axis.append(tuple[1])
 
-            print('x_axis: ', x_axis)
-
+        # If autoscaling is not enabled by the user, we need to set the max count of the y-axis
         if self.autoscale != 'Yes':
             layout = go.Layout(title=title, yaxis=dict(range=[0, self.max_count]))
         else:
             layout = Layout(title=title)
 
+        # Setup the bar graph object to display via Plotly/Dash
+        # The "self.mode" is gathered from the Reports Wizard to decide whether the graph will be a line graph,
+        # scatter plot, or both, depending on user input
         fig = go.Figure(
             data=[go.Scatter(x=x_axis, y=y_axis, mode=self.mode, marker=dict(color=self.bar_color.lower()))],
             layout=layout)
 
+        # Now implement the custom scaling if enabled
         if self.autoscale != 'Yes':
             fig.update_yaxes(dtick=self.increment_by)
-        # graph = [Bar(x=x_axis,y=y_axis)]
-        # layout = Layout(title='Length of Visits',xaxis=dict(title='Length (min)'),yaxis=dict(title='# of Visits'))
-        # fig = Figure(data=graph,layout=layout)
-        # plot_div = plot(fig,output_type='div',show_link=False,link_text="")
 
-        # Dash instance for includng a table
+        # Dash instance for including a table
         if self.include_table == 'Yes' and validDates:
             header = ['Row Labels', 'Count of Location']
             x_list = list(x_axis)
             y_list = list(y_axis)
             values = [x_list, y_list]
 
+            # If we are counting visits over time, get the grand total
             if self.report_type == 'Count visits over time':
                 total = 0
                 for count in y_axis:
                     total += count
-
+                # Include header for the grand total, including HTML bold "<b>" marker
                 x_list.append('<b>Grand Total</b>')
                 y_list.append(total)
+            # If we are getting averages, get the average instead of a grand total
             elif self.report_type == 'Compare GPA against demographics':
                 total_values = len(y_list)
                 total = 0
                 for count in y_axis:
                     total += count
+                # Include header for the total average, including HTML bold "<b>" marker
                 x_list.append('<b>Total Average<b>')
                 total /= total_values
+                # Round off the total average to two decimal places
                 y_list.append(round(total, 2))
-            table = go.Figure(data=[go.Table(header=dict(values=header), cells=dict(values=values))],
-                              layout=Layout(title=title))
-            table.update_layout(height=(200 + len(x_list) * 23))
+
+            # Setup the table object to be rendered later by Dash/Plotly
+            table = go.Figure(
+                data=[go.Table(header=dict(values=header, align='left'), cells=dict(values=values, align='left'))],
+                layout=Layout(title=title))
+            table.update_layout(height=(220 + len(x_list) * 23))
 
             app.layout = html.Div(children=[dcc.Graph(id='table', figure=table)
                 , dcc.Graph(id='figure', figure=fig, style={'height': '80vh', 'width': '80vw'}),
                                             ], style={'height': '40vh', 'width': '70vw'})
 
+            # Create a separate list to setup the CSV file
             new_x_list = []
 
-            for str in x_list:
-                temp_new_string = str.replace('<b>', '')
+            # Go though the table list and get rid of the '<b>' HTML markers -- not wanted for a CSV file
+            for i, stri in enumerate(x_list):
+                if isinstance(stri, int) or isinstance(stri, float):
+                    replaced_str = str(stri)
+                    x_list[i] = replaced_str
+                    stri = replaced_str
+                temp_new_string = stri.replace('<b>', '')
                 new_string = temp_new_string.replace('</b>', '')
                 new_x_list.append(new_string)
 
+            # Setup the new list for the CSV file
             values = [new_x_list, y_list]
 
+            # Generate the CSV file
             genTableFile(header, values)
 
+        # Dash layout if the table is not included
         else:
             app.layout = html.Div(children=[
                 dcc.Graph(id='figure', figure=fig, style={'height': '90vh'}),
@@ -1583,8 +1739,10 @@ class ScatterPlot(State):
 
         return app, title, validDates
 
-
+# Sets up the report object based on form data that was entered by the user in the Reports Wizard
+# Returns the rendered HTML page with the report output
 def getReport(request):
+    # Get the form data from the Reports Wizard
     data = pageViews.preset_storage
     inner_dict = data['form_data']
     graph_type_dict = inner_dict[0]
@@ -1592,8 +1750,10 @@ def getReport(request):
     reportGenerator = ReportGenerator(request, data)
     app, title, valid_dates = reportGenerator.generateReport()
 
+    # If the query returned visits, go ahead and render the report
     if valid_dates:
         return render(request, 'visualizations/getReport.html', context={'graphTitle': title})
+    # If no visits were returned from the query, render an HTML form that asks the user for the different date range
     elif request.method == 'POST':
         form = TimeFrame(request.POST)
         if form.is_valid():
@@ -1614,11 +1774,15 @@ def getReport(request):
                 data = dateQueryCorrection(data, from_time, to_time)
             reportGenerator.setData(data)
             app, title, valid_dates = reportGenerator.generateReport()
+            # If the new dates are valid, go ahead and render the report
             if valid_dates:
                 return render(request, 'visualizations/getReport.html', context={'graphTitle': title})
+            # Handling for empty date form submission
             else:
                 form = TimeFrame()
                 return render(request, 'visualizations/queryCorrection.html', context={'form': form})
+        # If the user entered a date range that returned no visits, render the HTML form that asks for the new
+        # date range
         else:
             return render(request, 'visualizations/queryCorrection.html', context={'form': form})
     else:
@@ -1626,6 +1790,9 @@ def getReport(request):
         return render(request, 'visualizations/queryCorrection.html', context={'form': form})
 
 
+# If the user enters dates that return no visits, this will handle the new dates that
+# the user enters
+# Returns the new date range
 def dateQueryCorrection(data, new_from_time, new_to_time):
     inner_dict = data['form_data']
     date_subdict = inner_dict[2]
@@ -1636,6 +1803,7 @@ def dateQueryCorrection(data, new_from_time, new_to_time):
 
 
 # Convert bar graph preset data back into dictionary format to prepare send it to the report generator
+# Returns the data in dictionary format
 def getBarGraphPreset(presetModel, from_time, to_time):
     from_time = datetime.strptime(from_time, '%m-%d-%Y')
     to_time = datetime.strptime(to_time, '%m-%d-%Y')
@@ -1643,7 +1811,9 @@ def getBarGraphPreset(presetModel, from_time, to_time):
     report_data['form_data'] = []
     inner_list = report_data['form_data']
     inner_list.append({'graphType': 'Bar Graph', 'title': presetModel.title})
-    inner_list.append({'selection': presetModel.selection, 'include_table': presetModel.include_table})
+    inner_list.append({'selection': presetModel.selection, 'include_table': presetModel.include_table,
+                       'report_type': presetModel.report_type, 'category': presetModel.category,
+                       'gpa_to_compare': presetModel.gpa_to_compare})
     inner_list.append({'from_time': from_time, 'to_time': to_time})
     if presetModel.autoscale == 'Yes':
         inner_list.append({'select_bar_color': presetModel.select_bar_color, 'autoscale': presetModel.autoscale,
@@ -1654,12 +1824,15 @@ def getBarGraphPreset(presetModel, from_time, to_time):
                            'show_multiple_bars_by_location': presetModel.multiple_bars,
                            'max_count': presetModel.max_count, 'increment_by': presetModel.increment_by})
 
-    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all})
+    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all,
+                       'use_custom_event_name': presetModel.use_custom_event_name,
+                       'custom_event_name': presetModel.custom_event_name})
 
     return report_data
 
 
 # Convert histogram preset data back into dictionary format to prepare send it to the report generator
+# Returns the data in dictionary format
 def getHistogramPreset(presetModel, from_time, to_time):
     from_time = datetime.strptime(from_time, '%m-%d-%Y')
     to_time = datetime.strptime(to_time, '%m-%d-%Y')
@@ -1676,11 +1849,14 @@ def getHistogramPreset(presetModel, from_time, to_time):
         inner_list.append({'select_bar_color': presetModel.select_bar_color, 'autoscale': presetModel.autoscale,
                            'max_count': presetModel.max_count, 'increment_by': presetModel.increment_by})
 
-    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all})
+    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all,
+                       'use_custom_event_name': presetModel.use_custom_event_name,
+                       'custom_event_name': presetModel.custom_event_name})
 
     return report_data
 
-
+# Convert line graph/scatter plot preset data back into dictionary format to prepare send it to the report generator
+# Returns the data in dictionary format
 def getLineScatterPreset(presetModel, from_time, to_time):
     from_time = datetime.strptime(from_time, '%m-%d-%Y')
     to_time = datetime.strptime(to_time, '%m-%d-%Y')
@@ -1688,7 +1864,9 @@ def getLineScatterPreset(presetModel, from_time, to_time):
     report_data['form_data'] = []
     inner_list = report_data['form_data']
     inner_list.append({'graphType': 'Line and/or Scatter', 'title': presetModel.title})
-    inner_list.append({'selection': presetModel.selection, 'include_table': presetModel.include_table})
+    inner_list.append({'selection': presetModel.selection, 'include_table': presetModel.include_table,
+                       'report_type': presetModel.report_type, 'category': presetModel.category,
+                       'gpa_to_compare': presetModel.gpa_to_compare})
     inner_list.append({'from_time': from_time, 'to_time': to_time})
     if presetModel.autoscale == 'Yes':
         inner_list.append({'autoscale': presetModel.autoscale, 'max_count': None,
@@ -1699,11 +1877,14 @@ def getLineScatterPreset(presetModel, from_time, to_time):
                            'increment_by': presetModel.increment_by, 'select_dot_color': presetModel.dot_color,
                            'display_as': presetModel.display_options})
 
-    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all})
+    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all,
+                       'use_custom_event_name': presetModel.use_custom_event_name,
+                       'custom_event_name': presetModel.custom_event_name})
 
     return report_data
 
-
+# Convert pie chart preset data back into dictionary format to prepare send it to the report generator
+# Returns the data in dictionary format
 def getPieChartPreset(presetModel, from_time, to_time):
     from_time = datetime.strptime(from_time, '%m-%d-%Y')
     to_time = datetime.strptime(to_time, '%m-%d-%Y')
@@ -1714,11 +1895,14 @@ def getPieChartPreset(presetModel, from_time, to_time):
     inner_list.append({'selection': presetModel.selection, 'include_table': presetModel.include_table})
     inner_list.append({'from_time': from_time, 'to_time': to_time})
     inner_list.append({'Data_units': presetModel.data_units})
-    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all})
+    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all,
+                       'use_custom_event_name': presetModel.use_custom_event_name,
+                       'custom_event_name': presetModel.custom_event_name})
 
     return report_data
 
-
+# Convert individual statistic preset data back into dictionary format to prepare send it to the report generator
+# Returns the data in dictionary format
 def getIndividualStatisticPreset(presetModel, from_time, to_time):
     from_time = datetime.strptime(from_time, '%m-%d-%Y')
     to_time = datetime.strptime(to_time, '%m-%d-%Y')
@@ -1733,13 +1917,19 @@ def getIndividualStatisticPreset(presetModel, from_time, to_time):
                        'header_font_size': presetModel.header_font_size,
                        'statistic_font_size': presetModel.statistic_font_size})
 
-    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all})
+    inner_list.append({'attendance_data': presetModel.locations.split(','), 'select_all': presetModel.select_all,
+                       'use_custom_event_name': presetModel.use_custom_event_name,
+                       'custom_event_name': presetModel.custom_event_name})
 
     return report_data
 
-
+# When the user selects from a saved preset on the "presets" page, this will
+# obtain the correct preset from the database and return the rendered report to the user
 def presetReport(request, preset_name, from_time, to_time):
+    preset_name = unquote(preset_name)
+    # Get the preset object
     preset = ReportPresets.objects.get(pk=preset_name)
+    # Get the appropriate database data depending on the graph type
     if preset.graph_type == 'Bar Graph':
         data_dict = getBarGraphPreset(preset, from_time, to_time)
     elif preset.graph_type == 'Histogram':
@@ -1752,70 +1942,20 @@ def presetReport(request, preset_name, from_time, to_time):
         data_dict = getIndividualStatisticPreset(preset, from_time, to_time)
 
     reportGenerator = ReportGenerator(request, data_dict)
-
+    # Get the report object
     app, title, valid_dates = reportGenerator.generateReport()
 
+    # If the dates entered by the user returned visits, render the report
     if valid_dates:
         return render(request, 'visualizations/getReport.html', context={'graphTitle': title})
+    # Else render the HTML form to get a new date range from the user
     else:
         form = TimeFrame()
         pageViews.preset_storage = data_dict
         return render(request, 'visualizations/queryCorrection.html', context={'form': form})
 
-
-def callback_size(dropdown_color, dropdown_size):
-    return "The chosen T-shirt is a %s %s one." % (dropdown_size,
-                                                   dropdown_color)
-
-
-def plotly(request):
-    demographics = ['WHITE', 'BLACK', 'HISPA', 'ASIAN', 'UNKWN']
-    average_visits = [random.uniform(1.5, 6) for x in demographics]
-    graph = [Bar(x=demographics, y=average_visits)]
-    layout = Layout(title='Average # of Visits by Ethnicity', xaxis=dict(title='Ethnicity'),
-                    yaxis=dict(title='Average # of Visits'))
-    fig = Figure(data=graph, layout=layout)
-    plot_div = plot(fig, output_type='div', show_link=False, link_text="")
-    return render(request, "visualizations/plotly.html", context={'plot_div': plot_div})
-
-
-# Create your views here.
-def exampleGraph(request):
-    app = DjangoDash('SimpleExample')  # replaces dash.Dash
-
-    conn = sqlite3.connect('vmc_tap.db');
-    conn_results = [];
-
-    conn_string_sql = "select round(check_in_duration/5)*5, count(round(check_in_duration/5)*5) from visits group by round(check_in_duration/5)*5;";
-
-    for d in conn.execute(conn_string_sql):
-        conn_results.append(d);
-
-    # Rotates 2D array to work w/ plotly
-    conn_results_rotated = list(zip(*conn_results[::-1]));
-
-    if conn_results_rotated == []:
-        x_axis = [1, 2, 3, 4, 5, 6, 7, 8]
-        y_axis = [1, 2, 3, 4, 5, 6, 7, 8]
-    # raise emptyList("List is empty")
-    else:
-        x_axis = conn_results_rotated[0];
-        y_axis = conn_results_rotated[1];
-
-    fig = go.Figure(data=[go.Bar(x=x_axis, y=y_axis)])
-    # graph = [Bar(x=x_axis,y=y_axis)]
-    # layout = Layout(title='Length of Visits',xaxis=dict(title='Length (min)'),yaxis=dict(title='# of Visits'))
-    # fig = Figure(data=graph,layout=layout)
-    # plot_div = plot(fig,output_type='div',show_link=False,link_text="")
-
-    app.layout = html.Div(children=[
-        dcc.Graph(id='figure', figure=fig),
-    ], style={'height': '100vh'})
-
-    return render(request, 'visualizations/exampleGraph.html')
-
-#Generates a table as a csv so users can download the data tables
-#JH
+# Generate the CSV file for the user
+# Takes the existing table in the report and converts it to a CSV file
 def genTableFile(header, values):
     rows = zip(values[0], values[1])
     with open(os.path.join(os.getcwd(), 'table.csv'), 'w+', newline='') as csvfile:
@@ -1825,7 +1965,8 @@ def genTableFile(header, values):
             csvwriter.writerow(value)
         csvfile.close()
 
-
+# If the user decides to download the CSV file, this function will
+# handle the download request and download the file to the user's browser
 def downloadFile(request):
     path = os.path.join(os.getcwd(), 'table.csv')
 
@@ -1834,5 +1975,7 @@ def downloadFile(request):
     response['Content-Disposition'] = 'attachment; filename="%s"' % 'table.csv'
 
     os.remove(path)
+
+    print('Generating table file at:', path)
 
     return response

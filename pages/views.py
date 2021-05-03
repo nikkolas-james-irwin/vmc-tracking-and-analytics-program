@@ -11,7 +11,9 @@ from formtools.wizard.views import SessionWizardView
 from .forms import *
 from visualizations.models import ReportPresets
 from datetime import datetime
+from urllib.parse import quote
 
+# Forms for the Reports Wizard
 FORMS = [('SelectReportType', SelectReportType),
          ('BarGraphAxes', BarGraphAxes),
          ('LineGraphAxes', BarGraphAxes),
@@ -37,8 +39,6 @@ FORMS = [('SelectReportType', SelectReportType),
 # Temporarily store wizard choices if the user wants to save a "preset"
 preset_storage = {}
 
-# def landingPageView(request):
-#     return render(request, 'pages/landingPage.html')
 
 def manualPageView(request):
     if(request.method == 'POST'):
@@ -86,9 +86,6 @@ def surveyPageView(request):
     return render(request, 'pages/surveyThanks.html')
     #return HttpResponse('Survey data recorded.');
 
-#def surveyThanksView(request):
-#    return render(request, 'pages/surveyThanks.html');
-
 def homePageView(request):
     if request.user.is_authenticated:
         return render(request, 'pages/homePage.html')
@@ -112,20 +109,22 @@ def importGPAView(request):
     return render(request, 'pages/importGPAPage.html')
 
 
+# Render the admin page
 def vmcAdminPageView(request):
     if request.user.is_authenticated:
         return render(request, "pages/vmcAdminPage.html")
     else: 
         return redirect('login')
 
-
+# Render the main reports page
 def visPageView(request):
     if request.user.is_authenticated:
         return render(request, 'pages/visualizationsPage.html')
     else: 
         return redirect('login')
 
-
+# Allow users to change their password
+# Renders the form for changing passwords
 def changePassView(request, emailAddress):
     if request.user.is_authenticated:
         # Get the info. from the selected account
@@ -165,6 +164,7 @@ def changePassView(request, emailAddress):
         return redirect('login')
 
 
+# Allow users to change their email
 def changeEmailView(request, email):
     if request.user.is_authenticated:
         # Get the info. from the selected account
@@ -210,31 +210,32 @@ def changeEmailView(request, email):
     else: 
         return redirect('login')
 
-
+# Renders the HTML page that allows users to upload/change their profile picture
 def changeProfileView(request):
     if request.user.is_authenticated:
         return render(request, 'pages/changeProfilePage.html')
     else: 
         return redirect('login')
 
-
+# Renders the HTML page that displays user accounts
 def viewAccountsList(request):
     if request.user.is_authenticated:
         return render(request, 'pages/viewAccountsList.html')
     else: 
         return redirect('login')
 
-
+# Helper function for obtaining all user accounts from the database
 def accessAccounts():
     users = CustomUser.objects.all()
     return users
 
-
+# Helper function for obtaining individual user accounts
+# primary key = user email address (unique to each user)
 def accessIndividualAccount(emailAddress):
     user = CustomUser.objects.get(pk=emailAddress)
     return user
 
-
+# Helper function for flattening a list
 def flatten(sqlList):
     flattened_list = []
     for listItems in sqlList:
@@ -243,7 +244,8 @@ def flatten(sqlList):
 
     return flattened_list
 
-
+# Renders the HTML page that displays the user accounts
+# Only accessible if user is logged in/authenticated
 def accountsView(request):
     if request.user.is_authenticated:
         accountsList = accessAccounts()
@@ -253,75 +255,98 @@ def accountsView(request):
             emails.append(user.email)
     
         return render(request, 'pages/viewAccountsList.html', {'emails': emails})
+    # Redirect to login page if user is not logged in
     else: 
         return redirect('login')
 
-
+# Renders the HTML page that displays the account options for an individual user
 def otherAccountOptions(request, emailAddress):
+    # If the user is logged in
     if request.user.is_authenticated:
+        # Get the user account information from the database
         userAccount = accessIndividualAccount(emailAddress)
 
         info = {'accountName': userAccount.email, 'firstName': userAccount.first_name, 'lastName': userAccount.last_name}
         return render(request, 'pages/individualAccountOption.html', info)
+    # Redirect to the login page if the user is not authenticated
     else: 
         return redirect('login')
 
-
+# Renders the HTML form for creating a new user account
 def newAccount(request):
-    # if request.user.is_authenticated:
-    if request.method == 'POST':
-        import hashlib
-        import sqlite3
-        first_name = request.POST.get('firstName')
-        last_name = request.POST.get('lastName')
-        email = request.POST.get('email')
-        email += '@unr.edu'
-        password = request.POST.get('password')
-        CustomUser.objects.create_superuser(email, first_name, last_name, password)
-        return render(request, 'pages/accountCreated.html', {'email': email})
-    return render(request, 'pages/newAccount.html')
-    # else: 
-        # return redirect('login')
-
-
-def deleteAccount(request, emailAddress):
+    # If the user is logged in
     if request.user.is_authenticated:
+        # If the user submits the form
+        if request.method == 'POST':
+            import hashlib
+            import sqlite3
+            # Get account information, such as first name, last name, email address, and password
+            first_name = request.POST.get('firstName')
+            last_name = request.POST.get('lastName')
+            email = request.POST.get('email')
+            # Must have @unr.edu email address
+            email += '@unr.edu'
+            password = request.POST.get('password')
+            CustomUser.objects.create_superuser(email, first_name, last_name, password)
+            return render(request, 'pages/accountCreated.html', {'email': email})
+        return render(request, 'pages/newAccount.html')
+    else: 
+        return redirect('login')
+
+# Renders the HTML form that shows the user that the account was successfully deleted
+def deleteAccount(request, emailAddress):
+    # If the user is logged in
+    if request.user.is_authenticated:
+        # Get the user object from the database
         user = CustomUser.objects.get(pk=emailAddress)
+        # Delete the user object from the database
         user.delete()
 
         return render(request, 'pages/accountDeleted.html', {'email': emailAddress})
+    # Redirect to the login page
     else: 
         return redirect('login')    
 
-
+# Renders the HTML page when a new user account is sucessfully created
 def accountCreated(request, emailAddress):
+    # If the user is logged in
     if request.user.is_authenticated:
+        # Get the individual user account from the database
         accountList = accessIndividualAccount(emailAddress)
-
+        # Get the email address from the user account object
         email = accountList.email
 
         return render(request, 'pages/individualAccountOption.html', {'email': email})
     else: 
         return redirect('login') 
 
-
+# Renders the HTML page for resetting the password when the user is not authenticated/logged in
 def PassReset(request):
     if request.method == 'POST':
+        # Get the user's email address
         email = request.POST.get('email')
         form = PasswordResetForm(request.POST)
+        # If the email address is valid
         if form.is_valid():
             form.save(request=request)
             return render(request, 'pages/emailSent.html', {'email': email})
 
     return render(request, 'pages/forgotPassword.html')
 
-
+# When the user requests a password reset email, they receive a one-time link in the email
+# The ChangePass view ensures that the link is still valid directs the user to change their
+# password if the link is valid; otherwise, the user is given an error message
 def ChangePass(request, uidb64, token):
+    # Decode the password reset link
     email = urlsafe_base64_decode(uidb64).decode()
+    # Get the user object from the database
     user = CustomUser.objects.get(pk=email)
+    # Check to see if the password reset link is still valid
     tokenChecker = tokens.PasswordResetTokenGenerator()
+    # If the token is still valid, allow the user to change their password
     if tokenChecker.check_token(user, token):
         login(request, user)
+    # Otherwise, raise an HTTP 404 error message to inform the user that the link is still invalid
     else:
         raise Http404('Password reset link is no longer valid. Please get another email.')
 
@@ -330,16 +355,22 @@ def ChangePass(request, uidb64, token):
 
 # After the user has change their password, log them out and return to the login page
 def successfullyChangedPass(request):
+    # After the user submits the new password (clicks the "submit" button)
     if request.method == 'POST':
+        # Get the new password, hash it, and updated it
         request.user.set_password(request.POST.get('newPassword2'))
         update_session_auth_hash(request, request.user)
         email = request.user.email
+        # Save the new password into the database, then log the user back out because
+        # they requested the password reset while they were not authenticated (via email password reset)
         request.user.save()
         logout(request)
 
     return render(request, 'pages/passChangeSuccess.html', {'email': email})
 
-
+# Allow the user to change their first and last name
+# Renders the HTML form that shows the user that they successfully changed their
+# first/last name
 def changeName(request, accountName):
     if request.user.is_authenticated:
         # Get the info. from the selected account
@@ -479,7 +510,7 @@ class ReportWizardBase(SessionWizardView):
         preset_storage = {'form_data': [form.cleaned_data for form in form_list]}
         # If the user wants to save their report presets (except for date)
         if self.request.POST.get('save'):
-            return render(self.request, 'pages/wizardFiles/savePreset.html',
+            return render(self.request, 'pages/WizardFiles/savePreset.html',
                           data) #'selections': self.choices_dict, 'form':form})
         #elif self.request.POST.get('')
         # If the user does not want to save their report presets
@@ -532,6 +563,9 @@ def saveChoices(request, name):
         sel_dict = inner_dict[1]
         selection = sel_dict['selection']
         incl_table = sel_dict['include_table']
+        report_type = sel_dict['report_type']
+        category = sel_dict['category']
+        gpa_to_compare = sel_dict['gpa_to_compare']
         customization = inner_dict[3]
         sel_bar_color = customization['select_bar_color']
         autoscale = customization['autoscale']
@@ -543,8 +577,15 @@ def saveChoices(request, name):
         loc = loc_dict['attendance_data']
         loc = locationInserter(loc)
         sel_all = loc_dict['select_all']
+        use_custom_event_name = loc_dict['use_custom_event_name']
+        custom_event_name = loc_dict['custom_event_name']
 
-        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, select_all=sel_all, selection=selection, include_table=incl_table, select_bar_color=sel_bar_color, multiple_bars=mult_bars, autoscale=autoscale, max_count=max_ct, increment_by=inc_by, locations=loc, user=request.user, preset_name=name)
+        Preset = ReportPresets(graph_type=graph_type['graphType'], report_type=report_type, category=category,
+                               gpa_to_compare=gpa_to_compare, title=cust_title, select_all=sel_all, selection=selection,
+                               include_table=incl_table, select_bar_color=sel_bar_color, multiple_bars=mult_bars,
+                               autoscale=autoscale, max_count=max_ct, increment_by=inc_by, locations=loc, user=request.user,
+                               use_custom_event_name=use_custom_event_name, custom_event_name=custom_event_name,
+                               preset_name=name)
         Preset.save()
     elif graph_type['graphType'] == 'Histogram':
         sel_dict = inner_dict[1]
@@ -555,14 +596,19 @@ def saveChoices(request, name):
         autoscale = customization['autoscale']
         max_ct = customization['max_count']
         inc_by = customization['increment_by']
-        data = customization['data']
 
         loc_dict = inner_dict[4]
         loc = loc_dict['attendance_data']
         loc = locationInserter(loc)
         sel_all = loc_dict['select_all']
+        use_custom_event_name = loc_dict['use_custom_event_name']
+        custom_event_name = loc_dict['custom_event_name']
 
-        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, select_all=sel_all, time_units=time_units, include_table=incl_tabe, select_bar_color=sel_bar_color, autoscale=autoscale, max_count=max_ct, increment_by=inc_by, hist_data=data, locations=loc, user=request.user, preset_name=name)
+        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, select_all=sel_all,
+                               time_units=time_units, include_table=incl_tabe, select_bar_color=sel_bar_color,
+                               autoscale=autoscale, max_count=max_ct, increment_by=inc_by, locations=loc,
+                               user=request.user, preset_name=name, use_custom_event_name=use_custom_event_name,
+                               custom_event_name=custom_event_name)
         Preset.save()
     elif graph_type['graphType'] == 'Line Graph':
         sel_dict = inner_dict[1]
@@ -578,8 +624,14 @@ def saveChoices(request, name):
         loc = loc_dict['attendance_data']
         loc = locationInserter(loc)
         sel_all = loc_dict['select_all']
+        use_custom_event_name = loc_dict['use_custom_event_name']
+        custom_event_name = loc_dict['custom_event_name']
 
-        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, select_all=sel_all, selection=selection, include_table=incl_table, autoscale=autoscale, max_count=max_ct, increment_by=inc_by, line_color=sel_line_color, locations=loc, preset_name=name, user=request.user)
+        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, select_all=sel_all,
+                               selection=selection, include_table=incl_table, autoscale=autoscale, max_count=max_ct,
+                               increment_by=inc_by, line_color=sel_line_color, locations=loc, preset_name=name,
+                               user=request.user, use_custom_event_name=use_custom_event_name,
+                               custom_event_name=custom_event_name)
         Preset.save()
     elif graph_type['graphType'] == 'Pie Chart':
         sel_dict = inner_dict[1]
@@ -593,13 +645,22 @@ def saveChoices(request, name):
         loc = loc_dict['attendance_data']
         loc = locationInserter(loc)
         sel_all = loc_dict['select_all']
+        use_custom_event_name = loc_dict['use_custom_event_name']
+        custom_event_name = loc_dict['custom_event_name']
 
-        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, select_all=sel_all,selection=selection, include_table=incl_table, data_units=data_units, locations=loc, preset_name=name, user=request.user)
+        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, select_all=sel_all,
+                               selection=selection, include_table=incl_table, data_units=data_units, locations=loc,
+                               preset_name=name, user=request.user, use_custom_event_name=use_custom_event_name,
+                               custom_event_name=custom_event_name)
         Preset.save()
-    elif graph_type['graphType'] == 'Scatter Plot':
+    elif graph_type['graphType'] == 'Line and/or Scatter':
         sel_dict = inner_dict[1]
         selection = sel_dict['selection']
         incl_table = sel_dict['include_table']
+
+        report_type = sel_dict['report_type']
+        category = sel_dict['category']
+        gpa_to_compare = sel_dict['gpa_to_compare']
 
         customization = inner_dict[3]
         autoscale = customization['autoscale']
@@ -611,8 +672,15 @@ def saveChoices(request, name):
         loc = loc_dict['attendance_data']
         loc = locationInserter(loc)
         sel_all = loc_dict['select_all']
+        use_custom_event_name = loc_dict['use_custom_event_name']
+        custom_event_name = loc_dict['custom_event_name']
 
-        Preset = ReportPresets(graph_type=graph_type['graphType'], title=custom_title, selection=selection, select_all=sel_all, include_table=incl_table, autoscale=autoscale, max_count=max_ct, increment_by=inc_by, dot_color=sel_dot_color, locations=loc, preset_name=name, user=request.user)
+        Preset = ReportPresets(graph_type=graph_type['graphType'], report_type=report_type, category=category,
+                               gpa_to_compare=gpa_to_compare, title=cust_title, selection=selection,
+                               select_all=sel_all, include_table=incl_table, autoscale=autoscale, max_count=max_ct,
+                               increment_by=inc_by, dot_color=sel_dot_color, locations=loc, preset_name=name,
+                               user=request.user, use_custom_event_name=use_custom_event_name,
+                               custom_event_name=custom_event_name)
         Preset.save()
     elif graph_type['graphType'] == 'Individual Statistic':
         sel_dict = inner_dict[1]
@@ -620,17 +688,24 @@ def saveChoices(request, name):
         count_options = sel_dict['count_options']
 
         customization = inner_dict[3]
-        label_color = customization['label_font_color']
+        label_color = customization['header_font_color']
         statistic_font_color = customization['statistic_font_color']
         statistic_font_size = customization['statistic_font_size']
-        label_font_size = customization['label_font_size']
+        label_font_size = customization['header_font_size']
 
         loc_dict = inner_dict[4]
         loc = loc_dict['attendance_data']
         loc = locationInserter(loc)
         sel_all = loc_dict['select_all']
+        use_custom_event_name = loc_dict['use_custom_event_name']
+        custom_event_name = loc_dict['custom_event_name']
 
-        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, selection=selection, count_options=count_options, label_color=label_color, statistic_font_color=statistic_font_color, statistic_font_size=statistic_font_size, label_font_size=label_font_size, select_all=sel_all, locations=loc, preset_name=name, user=request.user)
+        Preset = ReportPresets(graph_type=graph_type['graphType'], title=cust_title, selection=selection,
+                               count_options=count_options, header_font_color=label_color,
+                               statistic_font_color=statistic_font_color, statistic_font_size=statistic_font_size,
+                               header_font_size=label_font_size, select_all=sel_all, locations=loc, preset_name=name,
+                               user=request.user, use_custom_event_name=use_custom_event_name,
+                               custom_event_name=custom_event_name)
         Preset.save()
 
 
@@ -681,6 +756,9 @@ def createReportFromPreset(request, name):
                 from_time = from_time.strftime('%m-%d-%Y')
                 to_time = to_time.strftime('%m-%d-%Y')
 
+                name = quote(name)
+                print('url encoded name:', name)
+
                 # Generate report here
                 return render(request, 'pages/presetReportGenerated.html', {'preset_name': name,
                                                                             'from_time': from_time, 'to_time': to_time,
@@ -694,10 +772,3 @@ def createReportFromPreset(request, name):
         return redirect('login')
 
 
-
-# Used for sending a test email
-# def send_test_mail():
-# send_mail('Test subject',
-#         'This is the message body',
-#        'pjknoch55@gmail.com',
-#       ['pjknoch@sbcglobal.net'])
